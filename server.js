@@ -99,13 +99,29 @@ app.get('/subscriptions', (req, res) => {
   res.json({ count: subscriptions.length, subscriptions });
 });
 
-const messages = [
-  'Kamu cantik sekali 😍',
-  'Jangan lupa makan ya ❤️',
-  'Aku sayang kamu 💕',
-  'Semangat ya hari ini!',
-  'Istirahat sebentar, minum air :)'
+const messages30min = [
+  'SAYANGG CANTIK BANGETTTT AAAAAAAA',
+  'SAYANGGKUUU GEMESH BANGETTT',
+  'SAYANGKUWW CINTAKUWWW UCUK BANGETTTT',
+  'SAYANG ADAA YANG DIPIKIRIN TIDAAA, LET ME KNOW YAK CINTAAAA',
+  'CHAT ME ANYTIME SAYANGGGGG',
+  'I LOVVVVVV UUUUU MOREEEE SAYANGGGG CANTIKKK UCUKKK GEMESHH BAHENOL SEXYYY',
+  'I LOVVVVV UUU THE MOST SAYANGGGGG CANTIKKKK',
+  '💞💘💞💓💞💓💞💓💘💓💞💓💘💓💓💞💞💓💞',
+  'SAYANGGG SEMANGAT HARI INIIII, AKU BAKAL TERUS ADA BUAT SAYANGG GIMANA PUN KONDISINYAAA',
+  'SAYANGG JANGAN LUPA TERSENYUM OKEYYYY, AKU SUKAKK NGELIAT SENYUM SAYANGGGG',
+  'SAYANGGGG MAW DUNG PAPNYAA AKU KANGENNNN SAYANGGGGG'
 ];
+
+const scheduledMessages = {
+  7: 'MORNING SAYANGKUW CINTAKUWWW, SEMOGAA HARI INII SAYANGG BISAKK BAHAGIA DAN SENENGGG DAN MOOD SAYANGG TERJAGAA, JANGAN LUPAA MINUM AIR PUTIH DULU YAKKK💘💘💘💘',
+  10: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
+  13: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
+  16: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
+  20: 'JANGAN LUPAA MAM YAK SAYANGG KALO SAYANG MASI LAPERR CINTAAAAAA, I LOVVVVVV UUUUU MOREEEE SAYANGGGG',
+  22: 'BOBONYA JANGAN TERLALU MALAM YAKK CANTIKKKKKK, SAYANGG JAGA KESEHATANNNNN YAKKKKK',
+  23: 'CAMAT BOBO SAYANGGG, JANGAN LUPAA BACAA DOAA SAYANGG, MIMPII INDAHH DANN BOBO YANG NYENYAK SAYANGGG, GUDNAIT SAYANGGG, I LOVVVVVV UUUUU MOREEEE SAYANGGGG CANTIKKK UCUKKK GEMESHH BAHENOL SEXYYY, BABAYY SAYANGGGGG'
+};
 
 async function sendNotification(sub, payload) {
   try {
@@ -126,16 +142,54 @@ function sendAllRandom() {
     console.log('⚠ No subscriptions registered');
     return;
   }
-  const msg = messages[Math.floor(Math.random() * messages.length)];
-  const payload = { title: 'Pesan Sayang', body: msg };
-  console.log('\n[SEND] Broadcasting message to', subscriptions.length, 'subscribers...');
-  console.log('[SEND] Message:', payload.body);
+  
+  const now = new Date();
+  const hour = now.getHours();
+  const minutes = now.getMinutes();
+  
+  // Check if current hour has a scheduled message
+  let msg = scheduledMessages[hour];
+  if (msg) {
+    console.log(`[SEND] Scheduled message for ${hour}:00 - ${msg.substring(0, 40)}...`);
+  } else {
+    // send random message from 30-minute list
+    msg = messages30min[Math.floor(Math.random() * messages30min.length)];
+    console.log(`[SEND] Random message (30min cycle) - ${msg.substring(0, 40)}...`);
+  }
+  
+  const payload = { title: 'Notifikasi Sayang 💌', body: msg };
+  console.log(`[SEND] Broadcasting to ${subscriptions.length} subscriber(s) at ${now.toLocaleTimeString()}`);
   subscriptions.forEach(sub => sendNotification(sub, payload));
-  console.log('[SEND] Done\n');
 }
 
-// send every 1 hour
-setInterval(sendAllRandom, 1000 * 60 * 60);
+// Check for scheduled messages every minute and send 30-min random messages
+setInterval(() => {
+  const now = new Date();
+  const hour = now.getHours();
+  const minutes = now.getMinutes();
+  
+  // If hour has a scheduled message and it's at the top of the hour (0 minutes), send it
+  if (scheduledMessages[hour] && minutes === 0) {
+    console.log(`[SCHEDULED] Sending message for hour ${hour}`);
+    sendAllRandom();
+  }
+}, 60 * 1000); // Check every minute
+
+// Send random messages every 30 minutes (at :00 and :30)
+setInterval(() => {
+  const now = new Date();
+  const minutes = now.getMinutes();
+  const hour = now.getHours();
+  
+  // Only send random messages at :00 and :30, but skip if there's a scheduled message at :00
+  if ((minutes === 0 || minutes === 30) && !(minutes === 0 && scheduledMessages[hour])) {
+    console.log('[30MIN] Sending random message cycle');
+    sendAllRandom();
+  }
+}, 60 * 1000); // Check every minute
+
+// send every 5 seconds
+// setInterval(sendAllRandom, 5 * 1000);  // DISABLED - using scheduled approach instead
 
 app.post('/sendNow', (req, res) => {
   sendAllRandom();

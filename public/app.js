@@ -12,7 +12,6 @@ function urlBase64ToUint8Array(base64String) {
 const status = document.getElementById('status');
 const btn = document.getElementById('enable');
 const disableBtn = document.getElementById('disable');
-const testBtn = document.getElementById('testSend');
 
 btn.addEventListener('click', async () => {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -70,6 +69,15 @@ btn.addEventListener('click', async () => {
 
     status.textContent = 'Terdaftar untuk notifikasi ❤️';
     console.log('✓ Subscription flow complete');
+
+    // auto-send a welcome notification via server
+    try {
+      console.log('Sending welcome notification via /sendNow');
+      await fetch('/sendNow', { method: 'POST' });
+      console.log('Requested /sendNow');
+    } catch (e) {
+      console.warn('Failed to request /sendNow:', e);
+    }
   } catch (err) {
     console.error('Subscription error:', err);
     status.textContent = 'Gagal mendaftar: ' + err.message;
@@ -112,17 +120,4 @@ btn.addEventListener('click', async () => {
     });
   }
 
-if (testBtn) {
-  testBtn.addEventListener('click', async () => {
-    try {
-      console.log('Clicking test send button...');
-      const resp = await fetch('/sendNow', { method: 'POST' });
-      const data = await resp.json();
-      console.log('Server response:', data);
-      alert('Kirim sekarang: ' + (data.sent ? 'OK' : 'Gagal') + ' (lihat console untuk detail)');
-    } catch (e) {
-      console.error('Test send error:', e);
-      alert('Gagal menghubungi server: ' + e.message);
-    }
-  });
-}
+// removed test send button — welcome notification is sent automatically after subscribe

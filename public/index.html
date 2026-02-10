@@ -6,11 +6,31 @@
   <title>Notifikasi Sayang</title>
 </head>
 <body>
-  <h1>Notifikasi Sayang</h1>
-  <p id="status">Belum terdaftar</p>
-  <button id="enable">Aktifkan Notifikasi</button>
-  <button id="disable">Nonaktifkan Notifikasi</button>
-  <button id="testSend">Kirim Sekarang (tes)</button>
+  <style>
+    :root{--bg:#fff7fb;--card:#fff;--accent:#ff7ab6;--muted:#6b6b6b}
+    html,body{height:100%;margin:0;font-family:Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#fff7fb 0%, #fff1f8 100%);}
+    .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:var(--card);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,0.07);padding:28px;max-width:520px;width:100%;text-align:center}
+    h1{margin:0 0 8px;font-size:40px;color:#222;font-family:'Georgia',serif}
+    p#status{color:var(--muted);margin:6px 0 18px}
+    .heart{display:inline-block;margin-right:8px;font-size:26px}
+    .buttons{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+    button{background:linear-gradient(180deg,var(--accent),#ff5ea6);color:white;border:0;padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(255,122,182,0.25)}
+    button.alt{background:#fff;border:2px solid #ffd6ea;color:#ff4f97;box-shadow:none;font-weight:700}
+    footer{margin-top:14px;color:#9b9b9b;font-size:13px}
+  </style>
+
+  <div class="wrap">
+    <div class="card">
+      <h1><span class="heart">💌</span>Notifikasi Sayang</h1>
+      <p id="status">Belum terdaftar</p>
+      <div class="buttons">
+        <button id="enable">Izinkan Notifikasi</button>
+        <button id="disable" class="alt">Matikan Notifikasi</button>
+      </div>
+      <footer>Ketik hati kecil: otomatis kirim sambutan setelah izinkan 💕</footer>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>
