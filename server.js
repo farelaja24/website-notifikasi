@@ -43,14 +43,40 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 
 const SUBS_FILE = 'subscriptions.json';
 let subscriptions = [];
-try {
-  if (fs.existsSync(SUBS_FILE)) {
-    const raw = fs.readFileSync(SUBS_FILE, 'utf8');
-    subscriptions = JSON.parse(raw) || [];
-    console.log('Loaded', subscriptions.length, 'subscriptions from file');
+
+// Try to load subscriptions from env variable first (for Railway persistence)
+if (process.env.SUBSCRIPTIONS_DATA) {
+  try {
+    subscriptions = JSON.parse(process.env.SUBSCRIPTIONS_DATA);
+    console.log('Loaded subscriptions from SUBSCRIPTIONS_DATA env var:', subscriptions.length, 'subscriptions');
+  } catch (e) {
+    console.warn('Failed to parse SUBSCRIPTIONS_DATA env var:', e.message);
   }
-} catch (e) {
-  console.error('Failed loading subscriptions file:', e);
+}
+
+// If not loaded from env, try to load from file (for local development)
+if (subscriptions.length === 0) {
+  try {
+    if (fs.existsSync(SUBS_FILE)) {
+      const raw = fs.readFileSync(SUBS_FILE, 'utf8');
+      subscriptions = JSON.parse(raw) || [];
+      console.log('Loaded subscriptions from file:', subscriptions.length, 'subscriptions');
+    }
+  } catch (e) {
+    console.error('Failed loading subscriptions file:', e);
+  }
+}
+
+// Helper to persist subscriptions (both file and env var)
+function persistSubscriptions() {
+  try {
+    fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
+    // For Railway: you can manually set SUBSCRIPTIONS_DATA env var from subscriptions.json content
+    // Or implement a function to push to Railway config
+    console.log('[PERSIST] Saved subscriptions.json (' + subscriptions.length + ' subscriptions)');
+  } catch (e) {
+    console.error('[PERSIST] Failed to save subscriptions.json:', e.message);
+  }
 }
 
 app.get('/vapidPublicKey', (req, res) => {
@@ -64,7 +90,7 @@ app.post('/subscribe', (req, res) => {
     const exists = subscriptions.find(s => JSON.stringify(s) === JSON.stringify(sub));
     if (!exists) {
       subscriptions.push(sub);
-      fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
+      persistSubscriptions();
       console.log('Saved new subscription (total =', subscriptions.length + ')');
     } else {
       console.log('Subscription already exists');
@@ -83,7 +109,7 @@ app.post('/unsubscribe', (req, res) => {
     const idx = subscriptions.findIndex(s => JSON.stringify(s) === JSON.stringify(sub));
     if (idx !== -1) {
       subscriptions.splice(idx, 1);
-      fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
+      persistSubscriptions();
       console.log('Removed subscription (total =', subscriptions.length + ')');
       return res.json({ success: true });
     }
@@ -116,6 +142,17 @@ app.get('/debug/test-send', (req, res) => {
   console.log('[DEBUG] Manual test-send triggered');
   sendAllRandom();
   res.json({ sent: true, timestamp: new Date().toISOString() });
+});
+
+// Export subscriptions as env variable format for Railway
+app.get('/debug/export-subscriptions', (req, res) => {
+  const subsJson = JSON.stringify(subscriptions);
+  res.json({
+    count: subscriptions.length,
+    envVarFormat: `SUBSCRIPTIONS_DATA='${subsJson}'`,
+    subscriptionsData: subsJson,
+    advice: 'Copy the envVarFormat value and set it as SUBSCRIPTIONS_DATA env var in Railway dashboard'
+  });
 });
 
 const messages30min = [
@@ -162,7 +199,7 @@ async function sendNotification(sub, payload) {
         if (idx !== -1) {
           console.log('[PUSH] Removing invalid subscription (404/410)');
           subscriptions.splice(idx, 1);
-          fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
+          persistSubscriptions();
           console.log(`[PUSH] Removed. Total subscriptions: ${subscriptions.length}`);
         }
       } catch (e) {

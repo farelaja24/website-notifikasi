@@ -22,13 +22,5 @@
       "p256dh": "BPeI4kXZgqzxKsbjail64dH5lowsHXtaj49edoYPcb18fcLLTgujtW5miG6S8fR9RMa0ok9KZgMD6UCSAPl3z-I",
       "auth": "yxn94GGcwf9y0KAOrLGNdQ"
     }
-  },
-  {
-    "endpoint": "https://wns2-pn1p.notify.windows.com/w/?token=BQYAAADytTfyiNWxSInZdyKLZfjQ46cvEd0qSfbmw9eYZtFskOWqjpdbcYB%2fj%2by%2b4Aanpcqoe%2bEG8S2UPOeAdpzcruDT%2ffRPsmJrVbkZa7m6BjnCEN%2fyD%2fGMU4hFBsCoRwE0I9s6gKgHwhAJdHcNJgX%2bYCcekM32pLsvD%2bDe1CNg7ia336gV5%2bhtLohGu3PPBitGPPQVUKykp5y9PgETMI5ky5XDo2dXkix%2bD8%2fP942c422LcDqwySomLRjXPxrRyq0djNbA6zNIoefuPghfzjpq3zVmevCcs2wHGjr3jJiVXu%2buIS7zFpTgDyIoA5JDKhwdqZ%2bKQTBaOnY%2bXbRM8e4aH775",
-    "expirationTime": null,
-    "keys": {
-      "p256dh": "BEC0sd_BHXV-QrnszGAE2pQ5MPXGowsTlFdRPuF1GJ32_lz6pOypnEEfz-qpcpyutYS4xoR0vneY6YtIx6rGXyg",
-      "auth": "JFMLDUG51QYOezJ_mTO1Gw"
-    }
   }
 ]
