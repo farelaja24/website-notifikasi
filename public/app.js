@@ -11,6 +11,7 @@ function urlBase64ToUint8Array(base64String) {
 
 const status = document.getElementById('status');
 const btn = document.getElementById('enable');
+const disableBtn = document.getElementById('disable');
 const testBtn = document.getElementById('testSend');
 
 btn.addEventListener('click', async () => {
@@ -40,10 +41,21 @@ btn.addEventListener('click', async () => {
     const publicKey = data.publicKey;
     console.log('6. VAPID public key:', publicKey.substring(0,20) + '...');
 
+    // debug: check key format
+    console.log('6.a Public key raw:', publicKey);
+    console.log('6.b Public key length:', publicKey.length);
+
     console.log('7. Subscribing to push manager...');
+    const applicationServerKey = urlBase64ToUint8Array(publicKey);
+    console.log('7.a applicationServerKey is Uint8Array?', applicationServerKey instanceof Uint8Array, Object.prototype.toString.call(applicationServerKey));
+    try {
+      console.log('7.b applicationServerKey byteLength:', applicationServerKey && applicationServerKey.byteLength);
+    } catch (e) {
+      console.log('7.b could not read byteLength:', e);
+    }
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey)
+      applicationServerKey
     });
     console.log('8. Subscription created:', sub);
 
@@ -63,6 +75,42 @@ btn.addEventListener('click', async () => {
     status.textContent = 'Gagal mendaftar: ' + err.message;
   }
 });
+
+  // Unsubscribe handler
+  if (disableBtn) {
+    disableBtn.addEventListener('click', async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) {
+          alert('Service worker belum terdaftar');
+          return;
+        }
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          alert('Belum ada subscription untuk dibatalkan');
+          return;
+        }
+        const unsubbed = await sub.unsubscribe();
+        console.log('Unsubscribed locally:', unsubbed);
+        // inform server to remove subscription
+        try {
+          await fetch('/unsubscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sub)
+          });
+          console.log('Notified server to remove subscription');
+        } catch (e) {
+          console.warn('Failed to notify server about unsubscribe:', e);
+        }
+        status.textContent = 'Tidak terdaftar untuk notifikasi';
+        alert('Berhasil unsubscribe');
+      } catch (e) {
+        console.error('Unsubscribe error:', e);
+        alert('Gagal unsubscribe: ' + e.message);
+      }
+    });
+  }
 
 if (testBtn) {
   testBtn.addEventListener('click', async () => {

@@ -9,11 +9,36 @@ app.use(bodyParser.json());
 app.use(express.static('public'));
 
 const fs = require('fs');
-const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_FILE = 'vapid.json';
+
+let VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
+let VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
+
+try {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    if (fs.existsSync(VAPID_FILE)) {
+      const v = JSON.parse(fs.readFileSync(VAPID_FILE, 'utf8'));
+      VAPID_PUBLIC = VAPID_PUBLIC || v.publicKey || '';
+      VAPID_PRIVATE = VAPID_PRIVATE || v.privateKey || '';
+      console.log('Loaded VAPID keys from', VAPID_FILE);
+    } else if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+      console.log('VAPID keys not found in env or file — generating new keys...');
+      const keys = webpush.generateVAPIDKeys();
+      VAPID_PUBLIC = keys.publicKey;
+      VAPID_PRIVATE = keys.privateKey;
+      fs.writeFileSync(VAPID_FILE, JSON.stringify({ publicKey: VAPID_PUBLIC, privateKey: VAPID_PRIVATE }, null, 2));
+      console.log('Generated and saved VAPID keys to', VAPID_FILE);
+    }
+  }
+} catch (e) {
+  console.error('VAPID key handling error:', e);
+}
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails('mailto:you@example.com', VAPID_PUBLIC, VAPID_PRIVATE);
+  console.log('VAPID configured. Public key length:', VAPID_PUBLIC.length);
+} else {
+  console.warn('VAPID keys missing; push notifications will not work until configured.');
 }
 
 const SUBS_FILE = 'subscriptions.json';
@@ -48,6 +73,25 @@ app.post('/subscribe', (req, res) => {
   } catch (err) {
     console.error('Subscribe error', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// remove subscription when client unsubscribes
+app.post('/unsubscribe', (req, res) => {
+  const sub = req.body;
+  try {
+    const idx = subscriptions.findIndex(s => JSON.stringify(s) === JSON.stringify(sub));
+    if (idx !== -1) {
+      subscriptions.splice(idx, 1);
+      fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
+      console.log('Removed subscription (total =', subscriptions.length + ')');
+      return res.json({ success: true });
+    }
+    console.log('Unsubscribe: subscription not found');
+    res.json({ success: false, error: 'not found' });
+  } catch (e) {
+    console.error('Unsubscribe error', e);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
