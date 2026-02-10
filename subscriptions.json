@@ -1,29 +1,5 @@
 [
   {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/fRuu4qAwBHo:APA91bG40rVXug5DfLAyZMKH7qijhIeqHzj5U3VWQm_H_khKWst8q_BKulOefl02GdlhM5J7p8b9DaHvjRgNaHvUaxja4dN0j0RsajLS7rbqNV56vnj5af37vQ-N4oStgAbEBbte-j9U",
-    "expirationTime": null,
-    "keys": {
-      "p256dh": "BP5J5Dfbr_9w4QFGQFZT1LYOTm6tj7EYj2gfwkHeKYgt7ikPfEV81RohOU-tNZgOjsWX9xcoGI3-7QjguB2Noq8",
-      "auth": "5jqPCSYw_SHF3Z2bvxKdlg"
-    }
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/fPVtajdDks4:APA91bELQeG-QxN3-pmezpJdG8ct6MMI1FSi23Uajy3hnFeOP3KzJx4LqZlRVbXg2W3J3f9CI6mwZPdVrQZkMU7T_xfBBlI0_aqFossY2K1sZi567-NJ6b925CVbahDywoHj01C9p0iP",
-    "expirationTime": null,
-    "keys": {
-      "p256dh": "BH7QwMB68ZS7ig3uSDMepZ70lEZF260zrqIGHO1MmDxFtlEU-ovF3CVTtdFdTDK2E2s4cKEd4jySbI120P7CLWU",
-      "auth": "dnnVWiKW0ysnPsScb7MqWw"
-    }
-  },
-  {
-    "endpoint": "https://fcm.googleapis.com/fcm/send/erZpQJgPwaY:APA91bFuq8Ix_cHoJGTVC3pcnRCK7cC89d5F8n7w__XTRc8E0MIQoBg6f7eMg256P7afxZEGR4TW9Y2-3HURLq0DBpBlEuCSmB6pe3eSnfCWLUJfRoE4S2mht15v_Uba1gZzQCLyPnjq",
-    "expirationTime": null,
-    "keys": {
-      "p256dh": "BKo7xrkyCChAmy39Tuxr8i5jEMefYCvliMxkeMSdGGbZIfRaf7ZQwJPUOOMZYtA13J4WPa-o1KOi0o-6w19vBnE",
-      "auth": "0WsVj8eSCzNWaHixA6Gcyg"
-    }
-  },
-  {
     "endpoint": "https://fcm.googleapis.com/fcm/send/dajqoPqGAAE:APA91bEP0iMZmXYcLJIuW8Fhj_-ikWLoK8afGNHjgtEz_8DenKGvTzlES3adfpG5mjl2SMjg4rLxmlL1H0cQAoZ4_M5TZVd4L56TEUfxmNz7qWWjhVvdlFFL64qJ97GnqM818xqcIBb0",
     "expirationTime": null,
     "keys": {

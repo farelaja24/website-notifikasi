@@ -121,3 +121,52 @@ btn.addEventListener('click', async () => {
   }
 
 // removed test send button — welcome notification is sent automatically after subscribe
+
+// On page load: register service worker and ensure subscription persisted on server
+async function initServiceWorkerAndSubscription() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    status.textContent = 'Browser tidak mendukung Push API';
+    console.error('Service Worker atau Push API tidak didukung');
+    return;
+  }
+
+  try {
+    // Register Service Worker with scope
+    console.log('Init: Registering Service Worker from /sw.js');
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    console.log('Init: Service Worker registered successfully', reg);
+    
+    // Check for existing subscription
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      console.log('Init: Found existing subscription:', sub);
+      // Ensure server still has it stored
+      try {
+        const resp = await fetch('/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub)
+        });
+        const data = await resp.json();
+        console.log('Init: Server confirmed subscription:', data);
+      } catch (e) {
+        console.warn('Init: Could not confirm subscription with server:', e);
+      }
+      status.textContent = 'Terdaftar untuk notifikasi ❤️';
+      console.log('✓ Existing subscription is active');
+    } else {
+      console.log('Init: No existing subscription found');
+      status.textContent = 'Belum terdaftar';
+    }
+  } catch (e) {
+    console.error('Init: Service Worker registration failed:', e);
+    status.textContent = 'Error loading - ' + (e.message || 'unknown error');
+  }
+}
+
+// Initialize on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initServiceWorkerAndSubscription);
+} else {
+  initServiceWorkerAndSubscription();
+}

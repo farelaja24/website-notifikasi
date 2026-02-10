@@ -99,6 +99,25 @@ app.get('/subscriptions', (req, res) => {
   res.json({ count: subscriptions.length, subscriptions });
 });
 
+// Debug endpoint: show subscription details
+app.get('/debug/subscriptions', (req, res) => {
+  const details = subscriptions.map((s, i) => ({
+    index: i,
+    endpoint: s.endpoint.substring(0, 60) + '...',
+    endpoint_full: s.endpoint,
+    keys: s.keys ? Object.keys(s.keys) : 'none',
+    auth: s.keys && s.keys.auth ? s.keys.auth.substring(0, 20) + '...' : 'none',
+    p256dh: s.keys && s.keys.p256dh ? s.keys.p256dh.substring(0, 20) + '...' : 'none'
+  }));
+  res.json({ count: subscriptions.length, details, lastUpdated: new Date().toISOString() });
+});
+
+app.get('/debug/test-send', (req, res) => {
+  console.log('[DEBUG] Manual test-send triggered');
+  sendAllRandom();
+  res.json({ sent: true, timestamp: new Date().toISOString() });
+});
+
 const messages30min = [
   'SAYANGG CANTIK BANGETTTT AAAAAAAA',
   'SAYANGGKUUU GEMESH BANGETTT',
@@ -125,71 +144,123 @@ const scheduledMessages = {
 
 async function sendNotification(sub, payload) {
   try {
-    console.log('Sending to endpoint:', sub.endpoint.substring(0, 50) + '...');
+    const endpoint = sub.endpoint || 'unknown';
+    console.log(`[PUSH] Sending to: ${endpoint.substring(0, 60)}...`);
+    console.log(`[PUSH] Payload: "${payload.body.substring(0, 50)}..."`);
+    
     await webpush.sendNotification(sub, JSON.stringify(payload));
-    console.log('✓ Notification sent successfully');
+    console.log('[PUSH] ✓ Sent successfully');
+    return true;
   } catch (err) {
-    console.error('✗ Send error:', err.statusCode, err.body || err.message);
+    const status = err && err.statusCode ? err.statusCode : null;
+    console.error(`[PUSH] ✗ Failed with status ${status}: ${err.message || JSON.stringify(err)}`);
+    
+    // Remove invalid subscriptions
+    if (status === 404 || status === 410) {
+      try {
+        const idx = subscriptions.findIndex(s => s.endpoint === sub.endpoint);
+        if (idx !== -1) {
+          console.log('[PUSH] Removing invalid subscription (404/410)');
+          subscriptions.splice(idx, 1);
+          fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
+          console.log(`[PUSH] Removed. Total subscriptions: ${subscriptions.length}`);
+        }
+      } catch (e) {
+        console.error('[PUSH] Failed to remove invalid subscription:', e.message);
+      }
+    }
+    return false;
   }
 }
 
 function sendAllRandom() {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-    console.log('⚠ VAPID keys not configured — skip sending');
+    console.log('[SEND] ⚠ VAPID keys not configured — skipping');
     return;
   }
   if (subscriptions.length === 0) {
-    console.log('⚠ No subscriptions registered');
+    console.log('[SEND] ⚠ No subscriptions registered');
     return;
   }
   
   const now = new Date();
   const hour = now.getHours();
   const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
   
-  // Check if current hour has a scheduled message
+  // Determine message to send
   let msg = scheduledMessages[hour];
-  if (msg) {
-    console.log(`[SEND] Scheduled message for ${hour}:00 - ${msg.substring(0, 40)}...`);
-  } else {
-    // send random message from 30-minute list
+  let msgType = 'scheduled';
+  
+  if (!msg) {
     msg = messages30min[Math.floor(Math.random() * messages30min.length)];
-    console.log(`[SEND] Random message (30min cycle) - ${msg.substring(0, 40)}...`);
+    msgType = 'random (30min)';
   }
   
-  const payload = { title: 'Notifikasi Sayang 💌', body: msg };
-  console.log(`[SEND] Broadcasting to ${subscriptions.length} subscriber(s) at ${now.toLocaleTimeString()}`);
-  subscriptions.forEach(sub => sendNotification(sub, payload));
+  const payload = { 
+    title: 'Notifikasi Sayang 💌', 
+    body: msg 
+  };
+  
+  console.log(`\n[SEND] ========================================`);
+  console.log(`[SEND] Time: ${now.toLocaleString()} (${hour}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')})`);
+  console.log(`[SEND] Type: ${msgType}`);
+  console.log(`[SEND] Message: "${msg.substring(0, 60)}..."`);
+  console.log(`[SEND] Recipients: ${subscriptions.length}`);
+  console.log(`[SEND] ========================================`);
+  
+  subscriptions.forEach((sub, idx) => {
+    console.log(`[SEND] Delivering to subscription ${idx + 1}/${subscriptions.length}...`);
+    sendNotification(sub, payload);
+  });
 }
 
-// Check for scheduled messages every minute and send 30-min random messages
-setInterval(() => {
-  const now = new Date();
-  const hour = now.getHours();
-  const minutes = now.getMinutes();
-  
-  // If hour has a scheduled message and it's at the top of the hour (0 minutes), send it
-  if (scheduledMessages[hour] && minutes === 0) {
-    console.log(`[SCHEDULED] Sending message for hour ${hour}`);
-    sendAllRandom();
-  }
-}, 60 * 1000); // Check every minute
+// Robust scheduling:
+//  - scheduledMessages: sent at top of the hour (00)
+//  - random 30-min messages: sent at :00 and :30 (unless a scheduled message is sent at :00)
 
-// Send random messages every 30 minutes (at :00 and :30)
-setInterval(() => {
+function msUntilNextMinute() {
   const now = new Date();
-  const minutes = now.getMinutes();
-  const hour = now.getHours();
-  
-  // Only send random messages at :00 and :30, but skip if there's a scheduled message at :00
-  if ((minutes === 0 || minutes === 30) && !(minutes === 0 && scheduledMessages[hour])) {
-    console.log('[30MIN] Sending random message cycle');
-    sendAllRandom();
-  }
-}, 60 * 1000); // Check every minute
+  return 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+}
 
-// send every 5 seconds
-// setInterval(sendAllRandom, 5 * 1000);  // DISABLED - using scheduled approach instead
+function scheduleTimers() {
+  // Align to next minute then set recurring intervals
+  setTimeout(() => {
+    // Every minute check for scheduled top-of-hour messages
+    setInterval(() => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minutes = now.getMinutes();
+      if (scheduledMessages[hour] && minutes === 0) {
+        console.log(`[SCHEDULED] Sending message for hour ${hour}`);
+        sendAllRandom();
+      }
+    }, 60 * 1000);
+
+    // Every 30 minutes: check and send at :00 and :30
+    setInterval(() => {
+      const now = new Date();
+      const minutes = now.getMinutes();
+      const hour = now.getHours();
+      if ((minutes === 0 || minutes === 30) && !(minutes === 0 && scheduledMessages[hour])) {
+        console.log('[30MIN] Sending random message cycle');
+        sendAllRandom();
+      }
+    }, 30 * 1000); // check more frequently near the minute to avoid drift
+
+  }, msUntilNextMinute());
+}
+
+// Allow quick test override via environment variable TEST_INTERVAL_SECONDS
+// Example: set TEST_INTERVAL_SECONDS=10 to send every 10 seconds for testing
+const testIntervalSec = parseInt(process.env.TEST_INTERVAL_SECONDS || '0', 10);
+if (testIntervalSec && testIntervalSec > 0) {
+  console.log(`TEST MODE: sending every ${testIntervalSec} seconds`);
+  setInterval(sendAllRandom, testIntervalSec * 1000);
+} else {
+  scheduleTimers();
+}
 
 app.post('/sendNow', (req, res) => {
   sendAllRandom();
@@ -198,3 +269,11 @@ app.post('/sendNow', (req, res) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Server listening on ${port}`));
+
+// Global error handlers so server doesn't exit silently
+process.on('unhandledRejection', (reason, p) => {
+  console.error('Unhandled Rejection at:', p, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
