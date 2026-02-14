@@ -22,5 +22,21 @@
       "p256dh": "BPeI4kXZgqzxKsbjail64dH5lowsHXtaj49edoYPcb18fcLLTgujtW5miG6S8fR9RMa0ok9KZgMD6UCSAPl3z-I",
       "auth": "yxn94GGcwf9y0KAOrLGNdQ"
     }
+  },
+  {
+    "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpi0m79-II3YcVfsSz7A7gaCFuBASXU6pisy_Cbu17rbRn-_KvAPQqHwwTEOAPN7rpg0n8pwdnykS02Zx8VQHkJ_0ET04x5fftJrh5lreP_G-nLl9_Bu5nY3Asc5wzM7kIJgyPC5v3kgDK11AunvcUo4vt8EEd6v0wh0lqg90mUk9SIOw",
+    "expirationTime": null,
+    "keys": {
+      "auth": "QyW32KUOgiknHYQIi5z5gQ",
+      "p256dh": "BD7x-eKGcVfFqhV0wFD0T2OJP24mYW_dEZLyXS_oyKF1lLjSyHrDLO9Lv3q6floXCGiBeX9cKin-25xj5Y8VxNY"
+    }
+  },
+  {
+    "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpj-_qkBzJRiakG0_ZtKRKi6GNe8HyB55fOFO-0HobSRGwkBCFR0yfNASt9s1dNLtBuF_Cbwbg1iaOF4mdD6qL7kDbA1keSDJn1JDp0kmt8_dE1yrn8qVhzok41Pi7hAFTTVu_5RnxBBlLb9is-poVZG1jW0TjjNcERqFm9v25ShOgxcw",
+    "expirationTime": null,
+    "keys": {
+      "auth": "HXLHJ85kMwPiGTUk-QLVww",
+      "p256dh": "BLBEvKPOOt0gPYCOaFQ8E5ETch7tnMLvyBmPSgcvuWnJ2jTNCp89FHL84wepgCjwAkj8Ub5UJ9QWDuMX7T7lybU"
+    }
   }
 ]

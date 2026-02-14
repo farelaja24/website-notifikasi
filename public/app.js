@@ -21,65 +21,79 @@ btn.addEventListener('click', async () => {
   }
 
   try {
+    console.log('\n========== SUBSCRIPTION FLOW START ==========');
     console.log('1. Registering service worker...');
-    const reg = await navigator.serviceWorker.register('/sw.js');
-    console.log('2. Service Worker registered:', reg);
+    const reg = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none'
+    });
+    console.log('2. ✓ Service Worker registered:', reg);
     
     console.log('3. Requesting notification permission...');
     const perm = await Notification.requestPermission();
     console.log('4. Permission status:', perm);
+    
     if (perm !== 'granted') {
       status.textContent = 'Izin notifikasi ditolak';
-      console.error('Notification permission denied');
+      console.error('❌ Notification permission denied');
+      alert('⚠️ Silakan izinkan notifikasi di settings browser Anda:\n\n' +
+            'Chrome: Menu > Settings > Privacy > Notifications > Add site\n' +
+            'Firefox: Preferences > Privacy > Permissions > Notifications\n' +
+            'Edge: Settings > Privacy > Website Permissions > Notifications');
       return;
     }
+    
+    // Verify permission in Notification API
+    console.log('5. Notification.permission:', Notification.permission);
 
-    console.log('5. Fetching VAPID public key...');
+    console.log('6. Fetching VAPID public key...');
     const resp = await fetch('/vapidPublicKey');
     const data = await resp.json();
     const publicKey = data.publicKey;
-    console.log('6. VAPID public key:', publicKey.substring(0,20) + '...');
+    console.log('7. ✓ VAPID public key retrieved');
 
-    // debug: check key format
-    console.log('6.a Public key raw:', publicKey);
-    console.log('6.b Public key length:', publicKey.length);
-
-    console.log('7. Subscribing to push manager...');
+    console.log('8. Subscribing to push manager...');
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
-    console.log('7.a applicationServerKey is Uint8Array?', applicationServerKey instanceof Uint8Array, Object.prototype.toString.call(applicationServerKey));
-    try {
-      console.log('7.b applicationServerKey byteLength:', applicationServerKey && applicationServerKey.byteLength);
-    } catch (e) {
-      console.log('7.b could not read byteLength:', e);
-    }
+    
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey
     });
-    console.log('8. Subscription created:', sub);
+    console.log('9. ✓ Subscription created');
+    console.log('   Endpoint:', sub.endpoint.substring(0, 60) + '...');
 
-    console.log('9. Sending subscription to server...');
+    console.log('10. Sending subscription to server...');
     const subResp = await fetch('/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sub)
     });
     const subData = await subResp.json();
-    console.log('10. Server response:', subData);
+    console.log('11. ✓ Server confirmed subscription');
 
     status.textContent = 'Terdaftar untuk notifikasi ❤️';
-    console.log('✓ Subscription flow complete');
+    console.log('========== SUBSCRIPTION FLOW COMPLETE ==========\n');
 
-    // auto-send a welcome notification via server
+    // Register background sync for reliability
+    try {
+      if ('sync' in reg) {
+        await reg.sync.register('sync-notifications');
+        console.log('✓ Background sync registered');
+      }
+    } catch (err) {
+      console.warn('⚠️ Background sync not available:', err.message);
+    }
+
+    // Send welcome notification
     try {
       console.log('Sending welcome notification via /sendNow');
       await fetch('/sendNow', { method: 'POST' });
-      console.log('Requested /sendNow');
+      console.log('✓ Requested /sendNow - notification should arrive shortly');
     } catch (e) {
-      console.warn('Failed to request /sendNow:', e);
+      console.warn('⚠️ Failed to request /sendNow:', e);
     }
   } catch (err) {
-    console.error('Subscription error:', err);
+    console.error('❌ Subscription error:', err);
     status.textContent = 'Gagal mendaftar: ' + err.message;
   }
 });
@@ -131,10 +145,50 @@ async function initServiceWorkerAndSubscription() {
   }
 
   try {
-    // Register Service Worker with scope
+    // Register Service Worker with scope and proper options
     console.log('Init: Registering Service Worker from /sw.js');
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const reg = await navigator.serviceWorker.register('/sw.js', { 
+      scope: '/',
+      updateViaCache: 'none' // Always check for updates to bypass cache
+    });
     console.log('Init: Service Worker registered successfully', reg);
+    
+    // Check for updates periodically
+    setInterval(() => {
+      console.log('Init: Checking for Service Worker updates...');
+      reg.update().catch(err => {
+        console.error('Init: Update check failed:', err);
+      });
+    }, 3600000); // Check every hour
+    
+    // Ensure controller is ready
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) {
+      console.log('Init: No active controller, waiting for it...');
+      await new Promise(resolve => {
+        navigator.serviceWorker.oncontrollerchange = () => {
+          console.log('Init: Controller changed');
+          resolve();
+        };
+        setTimeout(() => {
+          console.log('Init: Timeout waiting for controller');
+          resolve();
+        }, 3000);
+      });
+    }
+    
+    // Health check the service worker
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const mc = new MessageChannel();
+      navigator.serviceWorker.controller.postMessage(
+        { type: 'CHECK_SW' },
+        [mc.port2]
+      );
+      
+      mc.port1.onmessage = (event) => {
+        console.log('Init: SW Health check response:', event.data);
+      };
+    }
     
     // Check for existing subscription
     const sub = await reg.pushManager.getSubscription();
@@ -158,9 +212,20 @@ async function initServiceWorkerAndSubscription() {
       console.log('Init: No existing subscription found');
       status.textContent = 'Belum terdaftar';
     }
+    
+    // Attempt to register background sync (if supported)
+    if ('sync' in reg) {
+      try {
+        await reg.sync.register('sync-notifications');
+        console.log('Init: Background sync registered');
+      } catch (err) {
+        console.warn('Init: Background sync not available:', err);
+      }
+    }
+    
   } catch (e) {
     console.error('Init: Service Worker registration failed:', e);
-    status.textContent = 'Error loading - ' + (e.message || 'unknown error');
+    status.textContent = 'Error - ' + (e.message || 'unknown error');
   }
 }
 

@@ -138,6 +138,17 @@ app.get('/debug/subscriptions', (req, res) => {
   res.json({ count: subscriptions.length, details, lastUpdated: new Date().toISOString() });
 });
 
+// Health check endpoint for subscribe button
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    vapidConfigured: !!(VAPID_PUBLIC && VAPID_PRIVATE),
+    subscriptionCount: subscriptions.length,
+    serverUptime: process.uptime()
+  });
+});
+
 app.get('/debug/test-send', (req, res) => {
   console.log('[DEBUG] Manual test-send triggered');
   sendAllRandom();
@@ -179,10 +190,11 @@ const scheduledMessages = {
   23: 'CAMAT BOBO SAYANGGG, JANGAN LUPAA BACAA DOAA SAYANGG, MIMPII INDAHH DANN BOBO YANG NYENYAK SAYANGGG, GUDNAIT SAYANGGG, I LOVVVVVV UUUUU MOREEEE SAYANGGGG CANTIKKK UCUKKK GEMESHH BAHENOL SEXYYY, BABAYY SAYANGGGGG'
 };
 
-async function sendNotification(sub, payload) {
+async function sendNotification(sub, payload, retryCount = 0) {
+  const MAX_RETRIES = 2;
   try {
     const endpoint = sub.endpoint || 'unknown';
-    console.log(`[PUSH] Sending to: ${endpoint.substring(0, 60)}...`);
+    console.log(`[PUSH] Sending to: ${endpoint.substring(0, 60)}... (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
     console.log(`[PUSH] Payload: "${payload.body.substring(0, 50)}..."`);
     
     await webpush.sendNotification(sub, JSON.stringify(payload));
@@ -206,6 +218,17 @@ async function sendNotification(sub, payload) {
         console.error('[PUSH] Failed to remove invalid subscription:', e.message);
       }
     }
+    
+    // Retry on network errors but not on auth/invalid subscription errors
+    if (retryCount < MAX_RETRIES && status !== 400 && status !== 403 && status !== 404 && status !== 410) {
+      console.log(`[PUSH] Retrying in 2 seconds (${retryCount + 1}/${MAX_RETRIES})...`);
+      return new Promise(resolve => {
+        setTimeout(() => {
+          sendNotification(sub, payload, retryCount + 1).then(resolve).catch(() => resolve(false));
+        }, 2000);
+      });
+    }
+    
     return false;
   }
 }
@@ -246,9 +269,20 @@ function sendAllRandom() {
   console.log(`[SEND] Recipients: ${subscriptions.length}`);
   console.log(`[SEND] ========================================`);
   
+  let successCount = 0;
+  let failCount = 0;
+  
   subscriptions.forEach((sub, idx) => {
     console.log(`[SEND] Delivering to subscription ${idx + 1}/${subscriptions.length}...`);
-    sendNotification(sub, payload);
+    sendNotification(sub, payload).then(success => {
+      if (success) {
+        successCount++;
+        console.log(`[SEND] Success count: ${successCount}/${subscriptions.length}`);
+      } else {
+        failCount++;
+        console.log(`[SEND] Fail count: ${failCount}`);
+      }
+    });
   });
 }
 
@@ -289,12 +323,16 @@ function scheduleTimers() {
   }, msUntilNextMinute());
 }
 
-// Allow quick test override via environment variable TEST_INTERVAL_SECONDS
-// Example: set TEST_INTERVAL_SECONDS=10 to send every 10 seconds for testing
-const testIntervalSec = parseInt(process.env.TEST_INTERVAL_SECONDS || '0', 10);
+// Default: send notification every 10 seconds for testing
+// Can be overridden with TEST_INTERVAL_SECONDS environment variable
+const testIntervalSec = parseInt(process.env.TEST_INTERVAL_SECONDS || '10', 10);
 if (testIntervalSec && testIntervalSec > 0) {
   console.log(`TEST MODE: sending every ${testIntervalSec} seconds`);
-  setInterval(sendAllRandom, testIntervalSec * 1000);
+  // log a tick so we can verify the interval is running
+  setInterval(() => {
+    console.log(`[TEST MODE] tick at ${new Date().toISOString()}`);
+    sendAllRandom();
+  }, testIntervalSec * 1000);
 } else {
   scheduleTimers();
 }
