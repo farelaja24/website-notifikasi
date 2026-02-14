@@ -155,6 +155,28 @@ app.get('/debug/test-send', (req, res) => {
   res.json({ sent: true, timestamp: new Date().toISOString() });
 });
 
+// Debug: force-send scheduled message for a specific hour (for testing)
+app.get('/debug/send-scheduled/:hour', (req, res) => {
+  const hour = parseInt(req.params.hour, 10);
+  if (isNaN(hour) || scheduledMessages[hour] === undefined) {
+    return res.status(400).json({ success: false, error: 'No scheduled message for that hour' });
+  }
+
+  const payload = {
+    title: 'Notifikasi Sayang 💌',
+    body: scheduledMessages[hour]
+  };
+
+  console.log(`[DEBUG] Forcing scheduled message for hour ${hour}`);
+  lastScheduledSentAt = Date.now();
+  let sent = 0;
+  subscriptions.forEach((sub) => {
+    sendNotification(sub, payload).then(ok => { if (ok) sent++; });
+  });
+
+  res.json({ success: true, triggered: true, hour, recipients: subscriptions.length });
+});
+
 // Export subscriptions as env variable format for Railway
 app.get('/debug/export-subscriptions', (req, res) => {
   const subsJson = JSON.stringify(subscriptions);
@@ -197,14 +219,25 @@ async function sendNotification(sub, payload, retryCount = 0) {
     console.log(`[PUSH] Sending to: ${endpoint.substring(0, 60)}... (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
     console.log(`[PUSH] Payload: "${payload.body.substring(0, 50)}..."`);
     
-    await webpush.sendNotification(sub, JSON.stringify(payload));
+    // Set a generous TTL so push services will keep the message queued
+    // if the browser is not currently connected. TTL = 3600 seconds (1 hour).
+    // Add an Urgency header so push services treat this as higher priority
+    // (helps delivery when client is backgrounded).
+    await webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 60 * 60, headers: { Urgency: 'high' } });
     console.log('[PUSH] ✓ Sent successfully');
     return true;
   } catch (err) {
     const status = err && err.statusCode ? err.statusCode : null;
     console.error(`[PUSH] ✗ Failed with status ${status}: ${err.message || JSON.stringify(err)}`);
+    if (err && err.body) {
+      try {
+        console.error('[PUSH] Response body:', err.body.toString());
+      } catch (e) {
+        console.error('[PUSH] Could not stringify error body');
+      }
+    }
     
-    // Remove invalid subscriptions
+    // Remove invalid subscriptions (expired or not found)
     if (status === 404 || status === 410) {
       try {
         const idx = subscriptions.findIndex(s => s.endpoint === sub.endpoint);
@@ -216,6 +249,29 @@ async function sendNotification(sub, payload, retryCount = 0) {
         }
       } catch (e) {
         console.error('[PUSH] Failed to remove invalid subscription:', e.message);
+      }
+    }
+
+    // Handle auth/forbidden responses: often indicates expired credentials for this subscription
+    // Track failures and remove after repeated 401/403 to avoid spamming push service
+    if (status === 401 || status === 403) {
+      try {
+        const idx = subscriptions.findIndex(s => s.endpoint === sub.endpoint);
+        if (idx !== -1) {
+          subscriptions[idx]._failCount = (subscriptions[idx]._failCount || 0) + 1;
+          console.log(`[PUSH] Subscription auth failure count: ${subscriptions[idx]._failCount} for endpoint ${sub.endpoint.substring(0,60)}...`);
+          if (subscriptions[idx]._failCount >= 3) {
+            console.log('[PUSH] Removing subscription after repeated 401/403 failures');
+            subscriptions.splice(idx, 1);
+            persistSubscriptions();
+            console.log(`[PUSH] Removed. Total subscriptions: ${subscriptions.length}`);
+          } else {
+            // persist fail count so restarts retain the info
+            persistSubscriptions();
+          }
+        }
+      } catch (e) {
+        console.error('[PUSH] Failed to update/remove subscription on 401/403:', e.message);
       }
     }
     
@@ -235,7 +291,8 @@ async function sendNotification(sub, payload, retryCount = 0) {
 
 // Track last messages sent to avoid duplicates
 let lastMessageMinute = -1;
-let lastScheduledHour = -1;
+// Use timestamp to track last scheduled send to avoid stale hour issues across days
+let lastScheduledSentAt = 0; // epoch ms of last scheduled message sent
 
 function checkIfNearScheduled() {
   const now = new Date();
@@ -303,18 +360,25 @@ function sendAllRandom() {
   let isScheduled = false;
   
   // Priority 1: Check if at scheduled hour (:00)
-  if (minutes === 0 && scheduledMessages[hour] && lastScheduledHour !== hour) {
-    msg = scheduledMessages[hour];
-    msgType = '⭐ SCHEDULED';
-    isScheduled = true;
-    lastScheduledHour = hour;
-    console.log(`[SEND] >>> SCHEDULED MESSAGE TIME! Hour: ${hour}:00 <<<`);
-  } 
+  if (minutes === 0 && scheduledMessages[hour]) {
+    // Only send scheduled if we haven't sent a scheduled message in the last hour
+    const nowMs = Date.now();
+    if (nowMs - lastScheduledSentAt > 60 * 60 * 1000) {
+      msg = scheduledMessages[hour];
+      msgType = '⭐ SCHEDULED';
+      isScheduled = true;
+      lastScheduledSentAt = nowMs;
+      console.log(`[SEND] >>> SCHEDULED MESSAGE TIME! Hour: ${hour}:00 <<<`);
+    } else {
+      console.log(`[SEND] ℹ️  Scheduled message for hour ${hour} was already sent recently, skipping`);
+      return;
+    }
+  }
   // Priority 2: Check if near scheduled (1-29 minutes away)
   else if (minutes === 30) {
     // At :30, check if next hour is scheduled and we haven't sent it yet
     const nextHour = (hour + 1) % 24;
-    if (scheduledMessages[nextHour] && lastScheduledHour !== nextHour) {
+    if (scheduledMessages[nextHour]) {
       // Next hour is scheduled, don't send random at :30
       const minutesUntilScheduled = 60 - minutes; // should be 30 minutes
       console.log(`[SEND] ℹ️  Skipping random at :30 - scheduled message in ${minutesUntilScheduled} minutes`);
@@ -416,18 +480,21 @@ if (testIntervalSec && testIntervalSec > 0) {
   console.log(`TEST MODE: checking messages every ${testIntervalSec} seconds`);
   console.log('📌 SYSTEM: Random message every 30 min (:00 & :30)');
   console.log('📌 SMART: Skip random if within 1-29 min before scheduled\n');
-  
+
   let lastCheckMinute = -1;
-  
+  let lastCheckHour = -1;
+
   setInterval(() => {
     const now = new Date();
     const minutes = now.getMinutes();
-    
-    // Reset hour trackers when hour changes
-    if (new Date().getHours() !== (lastCheckMinute < 0 ? -1 : Math.floor(lastCheckMinute / 60))) {
-      lastScheduledHour = -1;
+    const hour = now.getHours();
+
+    // Reset scheduled tracker when hour changes
+    if (hour !== lastCheckHour) {
+      lastScheduledSentAt = 0;
+      lastCheckHour = hour;
     }
-    
+
     // Only check at :00 and :30
     if (minutes === 0 || minutes === 30) {
       if (lastCheckMinute !== minutes) {
@@ -535,6 +602,18 @@ app.post('/sendWelcome', (req, res) => {
       time: nextMsg.time.toLocaleString(),
       minutesUntil: minutesUntil
     }
+  });
+});
+
+// Debug: expose scheduler state for troubleshooting
+app.get('/debug/state', (req, res) => {
+  res.json({
+    subscriptions: subscriptions.length,
+    lastMessageMinute,
+    lastScheduledSentAt,
+    lastScheduledSentAtIso: lastScheduledSentAt ? new Date(lastScheduledSentAt).toISOString() : null,
+    serverTime: new Date().toISOString(),
+    scheduledHours: Object.keys(scheduledMessages).map(h => parseInt(h, 10))
   });
 });
 

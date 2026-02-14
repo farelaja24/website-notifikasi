@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Notifikasi Sayang</title>
+  <title>MOOD BOOSTER</title>
 </head>
 <body>
   <style>
     :root{--bg:#fff7fb;--card:#fff;--accent:#ff7ab6;--muted:#6b6b6b}
-    html,body{height:100%;margin:0;font-family:Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#fff7fb 0%, #fff1f8 100%);}
-    .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px}
+    /* Use full viewport height and prevent vertical scrollbars so the layout fits device screens */
+    html,body{height:100vh;margin:0;overflow:hidden;font-family:Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#fff7fb 0%, #fff1f8 100%);}
+    /* Ensure the central wrapper fills the viewport height */
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
     .card{background:var(--card);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,0.07);padding:28px;max-width:520px;width:100%;text-align:center}
     h1{margin:0 0 8px;font-size:40px;color:#222;font-family:'Georgia',serif}
     p#status{color:var(--muted);margin:6px 0 18px}
@@ -22,13 +24,13 @@
 
   <div class="wrap">
     <div class="card">
-      <h1><span class="heart">💌</span>Notifikasi Sayang</h1>
+      <h1><span class="heart">💌</span>MOOD BOOSTER</h1>
       <p id="status">Belum terdaftar</p>
       <div class="buttons">
         <button id="enable">Izinkan Notifikasi</button>
         <button id="disable" class="alt">Matikan Notifikasi</button>
       </div>
-      <footer>Ketik hati kecil: otomatis kirim sambutan setelah izinkan 💕</footer>
+      <footer>love messages for my beloved girlfriend 💕</footer>
     </div>
   </div>
 
