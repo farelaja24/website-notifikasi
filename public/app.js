@@ -233,6 +233,44 @@ async function initServiceWorkerAndSubscription() {
   }
 }
 
+// ============================================
+// Time Synchronization with Server
+// ============================================
+// Send device time to server periodically so it can sync with client
+async function syncDeviceTime() {
+  try {
+    const deviceTime = Date.now();
+    const resp = await fetch('/sync-time', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceTime })
+    });
+    const data = await resp.json();
+    
+    const timeDriftMs = data.timeDrift;
+    const timeDriftSec = (timeDriftMs / 1000).toFixed(2);
+    
+    console.log(`[TIME-SYNC] Device time: ${new Date(deviceTime).toISOString()}`);
+    console.log(`[TIME-SYNC] Server time: ${new Date(data.serverTime).toISOString()}`);
+    console.log(`[TIME-SYNC] Time drift: ${timeDriftSec}s (${timeDriftMs}ms)`);
+    console.log(`[TIME-SYNC] Next scheduled in: ${Math.ceil(data.nextScheduledIn / 1000)}s`);
+    console.log(`[TIME-SYNC] Next random in: ${Math.ceil(data.nextRandomIn / 1000)}s`);
+    
+    if (Math.abs(timeDriftMs) > 5000) {
+      console.warn(`[TIME-SYNC] ⚠️  Large time drift detected: ${timeDriftSec}s`);
+    }
+  } catch (err) {
+    console.warn('[TIME-SYNC] Failed to sync time with server:', err.message);
+  }
+}
+
+// Periodically sync device time (every 30 seconds)
+setInterval(syncDeviceTime, 30 * 1000);
+// Also sync immediately on page load
+syncDeviceTime().catch(err => {
+  console.warn('Initial time sync failed (may retry later):', err);
+});
+
 // Initialize on page load
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initServiceWorkerAndSubscription);
