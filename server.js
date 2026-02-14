@@ -44,6 +44,17 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 const SUBS_FILE = 'subscriptions.json';
 let subscriptions = [];
 
+// Support timezone offset for Railway deployments
+// Default: 0 (UTC). Set TIMEZONE_OFFSET to +7 for WIB, -5 for EST, etc.
+const TIMEZONE_OFFSET = parseInt(process.env.TIMEZONE_OFFSET || '0', 10);
+console.log(`[INIT] Timezone offset: UTC${TIMEZONE_OFFSET > 0 ? '+' : ''}${TIMEZONE_OFFSET}`);
+
+function getLocalTime() {
+  const utc = new Date();
+  const offset = TIMEZONE_OFFSET * 60 * 60 * 1000;
+  return new Date(utc.getTime() + offset);
+}
+
 // Try to load subscriptions from env variable first (for Railway persistence)
 if (process.env.SUBSCRIPTIONS_DATA) {
   try {
@@ -295,7 +306,7 @@ let lastMessageMinute = -1;
 let lastScheduledSentAt = 0; // epoch ms of last scheduled message sent
 
 function checkIfNearScheduled() {
-  const now = new Date();
+  const now = getLocalTime();
   const hour = now.getHours();
   const minutes = now.getMinutes();
   
@@ -338,7 +349,7 @@ function sendAllRandom() {
     return;
   }
   
-  const now = new Date();
+  const now = getLocalTime();
   const hour = now.getHours();
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
@@ -489,7 +500,7 @@ if (testIntervalSec && testIntervalSec > 0) {
   let lastCheckHour = -1;
 
   setInterval(() => {
-    const now = new Date();
+    const now = getLocalTime();
     const minutes = now.getMinutes();
     const hour = now.getHours();
 
@@ -543,7 +554,7 @@ function sendWelcomeNotification(sub) {
 
 // Calculate time until next message (every 30 minutes, unless near scheduled)
 function getTimeUntilNextMessage() {
-  const now = new Date();
+  const now = getLocalTime();
   const hour = now.getHours();
   const minutes = now.getMinutes();
   
@@ -611,13 +622,14 @@ app.post('/sendWelcome', (req, res) => {
 
 // Debug: expose scheduler state for troubleshooting
 app.get('/debug/state', (req, res) => {
-  const now = new Date();
+  const now = getLocalTime();
   res.json({
     subscriptions: subscriptions.length,
     lastMessageMinute,
     lastScheduledSentAt,
     lastScheduledSentAtIso: lastScheduledSentAt ? new Date(lastScheduledSentAt).toISOString() : null,
     serverTime: now.toISOString(),
+    timezoneOffset: TIMEZONE_OFFSET,
     currentHour: now.getHours(),
     currentMinute: now.getMinutes(),
     scheduledHours: Object.keys(scheduledMessages).map(h => parseInt(h, 10)),
@@ -627,7 +639,7 @@ app.get('/debug/state', (req, res) => {
 
 // Debug: list all scheduled messages with their content
 app.get('/debug/scheduled', (req, res) => {
-  const now = new Date();
+  const now = getLocalTime();
   const hour = now.getHours();
   const messages = Object.entries(scheduledMessages).map(([h, msg]) => ({
     hour: parseInt(h),
@@ -638,6 +650,7 @@ app.get('/debug/scheduled', (req, res) => {
   res.json({
     currentHour: hour,
     currentTime: now.toISOString(),
+    timezoneOffset: TIMEZONE_OFFSET,
     scheduledMessages: messages
   });
 });
