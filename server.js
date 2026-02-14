@@ -374,6 +374,10 @@ function sendAllRandom() {
       return;
     }
   }
+  else if (minutes === 0 && !scheduledMessages[hour]) {
+    // Log when a :00 minute occurs but no scheduled message for this hour
+    console.log(`[SEND] ℹ️  :00 check - hour ${hour} has NO scheduled message (scheduled hours: ${Object.keys(scheduledMessages).join(',')})`);
+  }
   // Priority 2: Check if near scheduled (1-29 minutes away)
   else if (minutes === 30) {
     // At :30, check if next hour is scheduled and we haven't sent it yet
@@ -607,13 +611,34 @@ app.post('/sendWelcome', (req, res) => {
 
 // Debug: expose scheduler state for troubleshooting
 app.get('/debug/state', (req, res) => {
+  const now = new Date();
   res.json({
     subscriptions: subscriptions.length,
     lastMessageMinute,
     lastScheduledSentAt,
     lastScheduledSentAtIso: lastScheduledSentAt ? new Date(lastScheduledSentAt).toISOString() : null,
-    serverTime: new Date().toISOString(),
-    scheduledHours: Object.keys(scheduledMessages).map(h => parseInt(h, 10))
+    serverTime: now.toISOString(),
+    currentHour: now.getHours(),
+    currentMinute: now.getMinutes(),
+    scheduledHours: Object.keys(scheduledMessages).map(h => parseInt(h, 10)),
+    scheduledMessages: scheduledMessages
+  });
+});
+
+// Debug: list all scheduled messages with their content
+app.get('/debug/scheduled', (req, res) => {
+  const now = new Date();
+  const hour = now.getHours();
+  const messages = Object.entries(scheduledMessages).map(([h, msg]) => ({
+    hour: parseInt(h),
+    message: msg.substring(0, 80) + '...',
+    isNow: parseInt(h) === hour,
+    isScheduled: !!scheduledMessages[h]
+  }));
+  res.json({
+    currentHour: hour,
+    currentTime: now.toISOString(),
+    scheduledMessages: messages
   });
 });
 
