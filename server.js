@@ -233,6 +233,44 @@ async function sendNotification(sub, payload, retryCount = 0) {
   }
 }
 
+// Track last messages sent to avoid duplicates
+let lastMessageMinute = -1;
+let lastScheduledHour = -1;
+
+function checkIfNearScheduled() {
+  const now = new Date();
+  const hour = now.getHours();
+  const minutes = now.getMinutes();
+  
+  // Check all scheduled hours
+  for (const scheduledHour of Object.keys(scheduledMessages).map(h => parseInt(h))) {
+    // Calculate minutes until scheduled hour
+    let minutesUntilScheduled = 0;
+    
+    if (scheduledHour > hour) {
+      // Scheduled is later today
+      minutesUntilScheduled = (scheduledHour - hour) * 60 - minutes;
+    } else if (scheduledHour < hour) {
+      // Scheduled is tomorrow
+      minutesUntilScheduled = (24 - hour + scheduledHour) * 60 - minutes;
+    } else {
+      // Same hour as scheduled
+      minutesUntilScheduled = -minutes; // already passed :00 of this hour
+    }
+    
+    // If within 1-29 minutes before scheduled
+    if (minutesUntilScheduled >= 1 && minutesUntilScheduled <= 29) {
+      return {
+        isNear: true,
+        scheduledHour: scheduledHour,
+        minutesUntil: minutesUntilScheduled
+      };
+    }
+  }
+  
+  return { isNear: false };
+}
+
 function sendAllRandom() {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
     console.log('[SEND] ⚠ VAPID keys not configured — skipping');
@@ -248,14 +286,72 @@ function sendAllRandom() {
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
   
-  // Determine message to send
-  let msg = scheduledMessages[hour];
-  let msgType = 'scheduled';
+  // Only process at :00 and :30
+  if (minutes !== 0 && minutes !== 30) {
+    console.log(`[SEND] ℹ️  Not a send time (${minutes}), need :00 or :30`);
+    return;
+  }
   
-  if (!msg) {
+  // Prevent duplicate sends within the same minute
+  if (lastMessageMinute === (hour * 60 + minutes)) {
+    console.log(`[SEND] ℹ️  Already sent message this minute, skipping duplicate`);
+    return;
+  }
+  
+  let msg = null;
+  let msgType = 'none';
+  let isScheduled = false;
+  
+  // Priority 1: Check if at scheduled hour (:00)
+  if (minutes === 0 && scheduledMessages[hour] && lastScheduledHour !== hour) {
+    msg = scheduledMessages[hour];
+    msgType = '⭐ SCHEDULED';
+    isScheduled = true;
+    lastScheduledHour = hour;
+    console.log(`[SEND] >>> SCHEDULED MESSAGE TIME! Hour: ${hour}:00 <<<`);
+  } 
+  // Priority 2: Check if near scheduled (1-29 minutes away)
+  else if (minutes === 30) {
+    // At :30, check if next hour is scheduled and we haven't sent it yet
+    const nextHour = (hour + 1) % 24;
+    if (scheduledMessages[nextHour] && lastScheduledHour !== nextHour) {
+      // Next hour is scheduled, don't send random at :30
+      const minutesUntilScheduled = 60 - minutes; // should be 30 minutes
+      console.log(`[SEND] ℹ️  Skipping random at :30 - scheduled message in ${minutesUntilScheduled} minutes`);
+      return;
+    }
+    
+    // Check if within 1-29 minutes before ANY scheduled message
+    const nearScheduled = checkIfNearScheduled();
+    if (nearScheduled.isNear) {
+      console.log(`[SEND] ℹ️  Within ${nearScheduled.minutesUntil} minutes of scheduled message - skipping random`);
+      return;
+    }
+    
+    // Send random at :30
     msg = messages30min[Math.floor(Math.random() * messages30min.length)];
     msgType = 'random (30min)';
   }
+  // At :00 but not scheduled
+  else if (minutes === 0) {
+    // Check if within 1-29 minutes before ANY scheduled message
+    const nearScheduled = checkIfNearScheduled();
+    if (nearScheduled.isNear) {
+      console.log(`[SEND] ℹ️  Within ${nearScheduled.minutesUntil} minutes of scheduled message - skipping random`);
+      return;
+    }
+    
+    // Send random at :00
+    msg = messages30min[Math.floor(Math.random() * messages30min.length)];
+    msgType = 'random (00min)';
+  }
+  
+  // If no message determined, return
+  if (!msg) {
+    return;
+  }
+  
+  lastMessageMinute = hour * 60 + minutes;
   
   const payload = { 
     title: 'Notifikasi Sayang 💌', 
@@ -298,27 +394,17 @@ function msUntilNextMinute() {
 function scheduleTimers() {
   // Align to next minute then set recurring intervals
   setTimeout(() => {
-    // Every minute check for scheduled top-of-hour messages
+    // Every minute, check for messages at :00 and :30
     setInterval(() => {
       const now = new Date();
-      const hour = now.getHours();
       const minutes = now.getMinutes();
-      if (scheduledMessages[hour] && minutes === 0) {
-        console.log(`[SCHEDULED] Sending message for hour ${hour}`);
+      
+      // Send message at every :00 and :30
+      if (minutes === 0 || minutes === 30) {
+        console.log(`[SCHEDULER] Time is ${minutes} - checking for message to send...`);
         sendAllRandom();
       }
     }, 60 * 1000);
-
-    // Every 30 minutes: check and send at :00 and :30
-    setInterval(() => {
-      const now = new Date();
-      const minutes = now.getMinutes();
-      const hour = now.getHours();
-      if ((minutes === 0 || minutes === 30) && !(minutes === 0 && scheduledMessages[hour])) {
-        console.log('[30MIN] Sending random message cycle');
-        sendAllRandom();
-      }
-    }, 30 * 1000); // check more frequently near the minute to avoid drift
 
   }, msUntilNextMinute());
 }
@@ -327,19 +413,129 @@ function scheduleTimers() {
 // Can be overridden with TEST_INTERVAL_SECONDS environment variable
 const testIntervalSec = parseInt(process.env.TEST_INTERVAL_SECONDS || '10', 10);
 if (testIntervalSec && testIntervalSec > 0) {
-  console.log(`TEST MODE: sending every ${testIntervalSec} seconds`);
-  // log a tick so we can verify the interval is running
+  console.log(`TEST MODE: checking messages every ${testIntervalSec} seconds`);
+  console.log('📌 SYSTEM: Random message every 30 min (:00 & :30)');
+  console.log('📌 SMART: Skip random if within 1-29 min before scheduled\n');
+  
+  let lastCheckMinute = -1;
+  
   setInterval(() => {
-    console.log(`[TEST MODE] tick at ${new Date().toISOString()}`);
-    sendAllRandom();
+    const now = new Date();
+    const minutes = now.getMinutes();
+    
+    // Reset hour trackers when hour changes
+    if (new Date().getHours() !== (lastCheckMinute < 0 ? -1 : Math.floor(lastCheckMinute / 60))) {
+      lastScheduledHour = -1;
+    }
+    
+    // Only check at :00 and :30
+    if (minutes === 0 || minutes === 30) {
+      if (lastCheckMinute !== minutes) {
+        console.log(`[TEST MODE] At :${String(minutes).padStart(2, '0')} - ${now.toISOString()}`);
+        sendAllRandom();
+        lastCheckMinute = minutes;
+      }
+    }
   }, testIntervalSec * 1000);
 } else {
   scheduleTimers();
 }
 
+// Send welcome notification when user subscribes
+function sendWelcomeNotification(sub) {
+  const welcomeMessages = [
+    'MAKACII SAYANGKUU CINTAKUWWW UDAAA IZININ AKUU BUATT NGIRIM PESAN PESAN INI UNTUK NEMENIN SAYANG SETIAP HARI 💌💕💖💗💓💞',
+    'MAKACII SAYANGKUU CINTAKUWWW UDAAA IZININ AKUU BUATT NGIRIM PESAN PESAN INI UNTUK NEMENIN SAYANG SETIAP HARI 💘❤️💑💏💝',
+    'MAKACII SAYANGKUU CINTAKUWWW UDAAA IZININ AKUU BUATT NGIRIM PESAN PESAN INI UNTUK NEMENIN SAYANG SETIAP HARI ❣️💕💖✨🌹',
+    'MAKACII SAYANGKUU CINTAKUWWW UDAAA IZININ AKUU BUATT NGIRIM PESAN PESAN INI UNTUK NEMENIN SAYANG SETIAP HARI 💗💓💞💕',
+  ];
+  
+  const welcomeMsg = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
+  
+  const welcomePayload = {
+    title: 'Notifikasi Sayang 💌',
+    body: welcomeMsg
+  };
+  
+  console.log('\n[WELCOME] ========================================');
+  console.log('[WELCOME] Sending welcome notification...');
+  console.log('[WELCOME] ========================================');
+  
+  sendNotification(sub, welcomePayload).then(success => {
+    if (success) {
+      console.log('[WELCOME] ✓ Welcome notification sent successfully');
+    } else {
+      console.log('[WELCOME] ✗ Failed to send welcome notification');
+    }
+  });
+}
+
+// Calculate time until next message (every 30 minutes, unless near scheduled)
+function getTimeUntilNextMessage() {
+  const now = new Date();
+  const hour = now.getHours();
+  const minutes = now.getMinutes();
+  
+  let nextSendTime = null;
+  let nextType = '';
+  
+  if (minutes < 30) {
+    // Next is :30
+    nextSendTime = new Date(now);
+    nextSendTime.setMinutes(30, 0, 0);
+    nextType = 'random (in 30 minutes)';
+  } else {
+    // Next is :00 next hour
+    nextSendTime = new Date(now);
+    nextSendTime.setHours(hour + 1, 0, 0, 0);
+    nextType = 'random (in 30 minutes)';
+  }
+  
+  // Check if scheduled message will be sent
+  const nextHour = nextSendTime.getHours();
+  if (scheduledMessages[nextHour] && nextSendTime.getMinutes() === 0) {
+    nextType = '⭐ scheduled';
+  }
+  
+  return {
+    time: nextSendTime,
+    type: nextType,
+    msUntil: nextSendTime.getTime() - now.getTime()
+  };
+}
+
 app.post('/sendNow', (req, res) => {
+  // This is for manual testing/immediate send
   sendAllRandom();
   res.json({ sent: true });
+});
+
+// New endpoint for welcome notification on subscribe
+app.post('/sendWelcome', (req, res) => {
+  const sub = req.body;
+  
+  if (!sub || !sub.endpoint) {
+    return res.status(400).json({ success: false, error: 'Invalid subscription' });
+  }
+  
+  // Send welcome immediately
+  sendWelcomeNotification(sub);
+  
+  // Calculate when to send next message
+  const nextMsg = getTimeUntilNextMessage();
+  const minutesUntil = Math.ceil(nextMsg.msUntil / 1000 / 60);
+  
+  console.log(`[WELCOME] Next message (${nextMsg.type}) in ${minutesUntil} minutes`);
+  
+  res.json({
+    success: true,
+    welcomeSent: true,
+    nextMessage: {
+      type: nextMsg.type,
+      time: nextMsg.time.toLocaleString(),
+      minutesUntil: minutesUntil
+    }
+  });
 });
 
 const port = process.env.PORT || 3000;

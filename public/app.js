@@ -86,11 +86,15 @@ btn.addEventListener('click', async () => {
 
     // Send welcome notification
     try {
-      console.log('Sending welcome notification via /sendNow');
-      await fetch('/sendNow', { method: 'POST' });
-      console.log('✓ Requested /sendNow - notification should arrive shortly');
+      console.log('Sending welcome notification via /sendWelcome');
+      await fetch('/sendWelcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sub)
+      });
+      console.log('✓ Requested /sendWelcome - welcome notification should arrive');
     } catch (e) {
-      console.warn('⚠️ Failed to request /sendNow:', e);
+      console.warn('⚠️ Failed to request /sendWelcome:', e);
     }
   } catch (err) {
     console.error('❌ Subscription error:', err);
