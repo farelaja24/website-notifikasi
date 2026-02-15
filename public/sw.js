@@ -62,8 +62,8 @@ self.addEventListener('push', function(event) {
   // Notification options with persistence
   const opts = {
     body: body,
-    icon: '/icon.png',
-    badge: '/icon.png',
+    icon: '/icons/icon-192.svg',
+    badge: '/icons/icon-192.svg',
     tag: 'notification-sayang',
     requireInteraction: true, // CRITICAL: Keep notification visible until user interacts
     vibrate: [200, 100, 200],

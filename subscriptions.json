@@ -22,5 +22,29 @@
       "p256dh": "BFHb85qQM9FWouENelZZAXIAB3gsPYT2cFvkInMirarrzR1C4D9FMdM0uNhNfaLfel2Zf4v5vAWc2xoRA2EqAEg",
       "auth": "7WbTxwRoSeKZQ-cfxg4fvw"
     }
+  },
+  {
+    "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpkUgnUzoJwyS4gpMrC_qVWAiLUBHlg4AcRx3ALcmhyz0TZYcB8jdCKXcy2PDNHFXsagwy2BT9C0FyorlziLwSftJ0SKHZsrMeDU9QLyWheYRpU0m4FT6HwwZOE8LsEonceENS0CvFC9nF9pJAPG-xUovv_p9ZOcXM3BG5jY1oYUabxgM",
+    "expirationTime": null,
+    "keys": {
+      "auth": "kHt8jdCCFxbEijFCXb3Wug",
+      "p256dh": "BD8nv-HfYrKfVCQwZ_0rD60Wx7UM1BI-1Zk6jZzAt9yG5wMfU54SnEfQzJp3Ptniwc9sT3V_TH0o_g2Qd9cGDMI"
+    }
+  },
+  {
+    "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpkUwK4Hy-ZgYGg5Qvp5kmz4PkWMfUimka50JZNJVp1SUm-EK3HpWAI7OBpudJptqpH71n9u1b5R87wo_unjI5ENGem4eGJ3arrAEavDeZ2EMWZmwbxRNGbGfkhKJBTIYa9jAagPztHjuLL_YYobrGGzVF23E_wLBerWEou7bcpg41OMM",
+    "expirationTime": null,
+    "keys": {
+      "auth": "i8_Xcp6eLtGtRw9G6oBHqA",
+      "p256dh": "BO9fYbB9D_81GsVOahsipV_oa3stjOwSDZFWvP1676O5HGmy7kIj0PoEAItqSZyLqn_NfUcyJc1YKtNAHijZ_oM"
+    }
+  },
+  {
+    "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpkU9I_D3KfAzeaXXUxOFPu484sygwQ0BWZFi6R9E-DuBtjzFSaQwajljmWdKtcHnQZnsuXVKzh-7m0YMs124CgQm4jB_xcNwM-bUnqHRWpY1D1xt_-DwD5lRTF_KDVTHUEACGtIYo9sWglYSvssi792t9ouil8gkmkbXtmg7xkTe18lQ",
+    "expirationTime": null,
+    "keys": {
+      "auth": "HGgM7DRb8q5-ugDyVnUCag",
+      "p256dh": "BCcAG1Ap7x7HZ0xqv5-lROwmWRg75MOPc8FNYTx573AVi3y-rGajIYF_rnDNUVkT9T6DHP98As5fLtQ14rfuHoE"
+    }
   }
 ]

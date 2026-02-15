@@ -63,10 +63,14 @@ btn.addEventListener('click', async () => {
     console.log('   Endpoint:', sub.endpoint.substring(0, 60) + '...');
 
     console.log('10. Sending subscription to server...');
+    // Include device timezone metadata so server can schedule per-user
+    const tzOffsetMinutes = new Date().getTimezoneOffset();
+    const tzName = (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : null;
+    const subWithMeta = Object.assign({}, sub, { tzOffsetMinutes, tz: tzName });
     const subResp = await fetch('/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sub)
+      body: JSON.stringify(subWithMeta)
     });
     const subData = await subResp.json();
     console.log('11. ✓ Server confirmed subscription');
@@ -96,11 +100,103 @@ btn.addEventListener('click', async () => {
     } catch (e) {
       console.warn('⚠️ Failed to request /sendWelcome:', e);
     }
+
+    // Start a simple client-side scheduler that will:
+    // - show a local welcome + one random immediately
+    // - then check device time each minute and show scheduled messages at hour:00
+    // - otherwise show random at :00 and :30
+    startClientScheduler(sub).catch(err => console.warn('Client scheduler failed to start:', err));
   } catch (err) {
     console.error('❌ Subscription error:', err);
     status.textContent = 'Gagal mendaftar: ' + err.message;
   }
 });
+
+// -------------------------
+// Client-side scheduler
+// -------------------------
+async function showNotificationViaSW(title, body) {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg && reg.showNotification) {
+      reg.showNotification(title, { body });
+    } else if (window.Notification) {
+      new Notification(title, { body });
+    }
+  } catch (e) {
+    console.warn('showNotificationViaSW failed:', e);
+  }
+}
+
+function msUntilNextMinute() {
+  const now = new Date();
+  return 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+}
+
+async function startClientScheduler(subscription) {
+  if (Notification.permission !== 'granted') return;
+
+  // Fetch scheduled mapping from server
+  let scheduled = {};
+  try {
+    const resp = await fetch('/scheduled');
+    const j = await resp.json();
+    if (j && j.scheduledMessages) scheduled = j.scheduledMessages;
+  } catch (e) {
+    console.warn('Could not fetch scheduled mapping from server, using defaults');
+  }
+
+  const randomMessages = [
+    'Hai sayang, semangat ya! 💖',
+    'Kangen, sayang? Aku di sini kok 💌',
+    'Selamat hari! Jangan lupa senyum 😊'
+  ];
+
+  // Helper to pick random message
+  const pickRandom = () => randomMessages[Math.floor(Math.random() * randomMessages.length)];
+
+  // Immediately show a welcome (local) and one random
+  showNotificationViaSW('Notifikasi Sayang 💌', 'Terima kasih telah mengizinkan notifikasi!');
+  showNotificationViaSW('Notifikasi Sayang 💌', pickRandom());
+
+  // Track last shown minute to avoid duplicates
+  let lastMessageMinute = -1;
+  let lastScheduledHourShown = -1;
+
+  // Start periodic checks aligned to next minute
+  setTimeout(() => {
+    const tick = async () => {
+      if (Notification.permission !== 'granted') return;
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+
+      const thisMinuteId = hour * 60 + minute;
+      if (lastMessageMinute === thisMinuteId) return; // already processed
+      lastMessageMinute = thisMinuteId;
+
+      // If it's top of the hour and there's a scheduled message for this hour
+      if (minute === 0 && scheduled && typeof scheduled[hour] !== 'undefined') {
+        // Avoid repeating within same hour
+        if (lastScheduledHourShown !== hour) {
+          const msg = scheduled[hour] || `Scheduled message for ${hour}:00`;
+          await showNotificationViaSW('Notifikasi Jadwal 💫', msg);
+          lastScheduledHourShown = hour;
+        }
+        return;
+      }
+
+      // Otherwise, at :00 or :30 show a random message
+      if (minute === 0 || minute === 30) {
+        await showNotificationViaSW('Notifikasi Sayang 💌', pickRandom());
+      }
+    };
+
+    // run immediately then every minute
+    tick();
+    setInterval(tick, 60 * 1000);
+  }, msUntilNextMinute());
+}
 
   // Unsubscribe handler
   if (disableBtn) {
@@ -277,3 +373,29 @@ if (document.readyState === 'loading') {
 } else {
   initServiceWorkerAndSubscription();
 }
+
+// -------------------------
+// PWA install prompt handling
+// -------------------------
+let deferredInstallPrompt = null;
+const installBtn = document.getElementById('install');
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (installBtn) {
+    installBtn.style.display = 'inline-block';
+    installBtn.addEventListener('click', async () => {
+      installBtn.style.display = 'none';
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      console.log('PWA install choice:', choice);
+      deferredInstallPrompt = null;
+    });
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('PWA installed');
+  if (installBtn) installBtn.style.display = 'none';
+});

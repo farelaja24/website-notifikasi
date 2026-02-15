@@ -87,6 +87,17 @@ if (subscriptions.length === 0) {
 // Helper to persist subscriptions (both file and env var)
 function persistSubscriptions() {
   try {
+    // Ensure each subscription has timezone metadata for per-subscriber scheduling
+    subscriptions = subscriptions.map(s => {
+      const copy = Object.assign({}, s);
+      if (typeof copy.tzOffsetMinutes !== 'number') {
+        // client getTimezoneOffset() semantics: minutes offset UTC - local
+        // fallback: infer from server TIMEZONE_OFFSET (hours)
+        copy.tzOffsetMinutes = -TIMEZONE_OFFSET * 60;
+      }
+      return copy;
+    });
+
     fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
     // For Railway: you can manually set SUBSCRIPTIONS_DATA env var from subscriptions.json content
     // Or implement a function to push to Railway config
@@ -204,6 +215,47 @@ app.get('/debug/export-subscriptions', (req, res) => {
     subscriptionsData: subsJson,
     advice: 'Copy the envVarFormat value and set it as SUBSCRIPTIONS_DATA env var in Railway dashboard'
   });
+});
+
+// Debug endpoint: migrate existing subscriptions to include timezone metadata
+app.post('/debug/migrate-subscriptions', (req, res) => {
+  let updated = 0;
+  subscriptions = subscriptions.map(s => {
+    const copy = Object.assign({}, s);
+    if (typeof copy.tzOffsetMinutes !== 'number') {
+      copy.tzOffsetMinutes = -TIMEZONE_OFFSET * 60;
+      updated++;
+    }
+    return copy;
+  });
+  persistSubscriptions();
+  res.json({ success: true, updated, total: subscriptions.length });
+});
+
+// Debug endpoint: force-send scheduled messages to all subscriptions based on their stored timezone
+app.post('/debug/send-scheduled-all', (req, res) => {
+  const nowMs = Date.now();
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  subscriptions.forEach(sub => {
+    const subOffsetMin = (typeof sub.tzOffsetMinutes === 'number') ? sub.tzOffsetMinutes : (-TIMEZONE_OFFSET * 60);
+    const localNow = new Date(nowMs - subOffsetMin * 60000);
+    const localHour = localNow.getHours();
+    // If there is a scheduled message for subscriber local hour, send it
+    if (scheduledMessages[localHour]) {
+      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[localHour] };
+      const opts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
+      sendNotification(sub, payload, opts).then(ok => {
+        if (ok) sent++; else failed++;
+      }).catch(() => { failed++; });
+    } else {
+      skipped++;
+    }
+  });
+
+  res.json({ success: true, triggeredAt: new Date(nowMs).toISOString(), sentEstimated: sent, skipped, failed });
 });
 
 const messages30min = [
@@ -363,6 +415,8 @@ function sendAllRandom() {
   const now = getLocalTime();
   const hour = now.getHours();
   // Use minutes and seconds declared above
+  const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
 
   // Only process at :00 and :30 for random/scheduled decisions
   if (minutes !== 0 && minutes !== 30) {
@@ -370,93 +424,88 @@ function sendAllRandom() {
     return;
   }
 
-  // Prevent duplicate sends within the same minute
+  // Prevent duplicate sends within the same server-minute
   if (lastMessageMinute === (hour * 60 + minutes)) {
     console.log(`[SEND] ℹ️  Already sent message this minute, skipping duplicate`);
     return;
   }
 
-  let msg = null;
-  let msgType = 'none';
-
-  // Priority 1: scheduled at top of the hour (:00)
-  if (minutes === 0 && scheduledMessages[hour]) {
-    const nowMs = Date.now();
-    // production guard: 1 hour
-    if (nowMs - lastScheduledSentAt > 60 * 60 * 1000) {
-      msg = scheduledMessages[hour];
-      msgType = '⭐ SCHEDULED';
-      lastScheduledSentAt = nowMs;
-      console.log(`[SEND] >>> SCHEDULED MESSAGE TIME! Hour: ${hour}:00 <<<`);
-    } else {
-      console.log(`[SEND] ℹ️  Scheduled message for hour ${hour} was already sent recently, skipping`);
-      return;
-    }
-  }
-  // At :30 or :00 (if not scheduled) handle random
-  else if (minutes === 30 || minutes === 0) {
-    // At :30, skip random if next hour is scheduled
-    if (minutes === 30) {
-      const nextHour = (hour + 1) % 24;
-      if (scheduledMessages[nextHour]) {
-        console.log(`[SEND] ℹ️  Skipping random at :30 - scheduled message in next hour`);
-        return;
-      }
-    }
-
-    // Check if within 1-29 minutes before ANY scheduled message (useful for :00 case)
-    const nearScheduled = checkIfNearScheduled();
-    if (nearScheduled.isNear) {
-      console.log(`[SEND] ℹ️  Within ${nearScheduled.minutesUntil} minutes of scheduled message - skipping random`);
-      return;
-    }
-
-    // Send random
-    msg = messages30min[Math.floor(Math.random() * messages30min.length)];
-    msgType = `random (${minutes === 0 ? '00min' : '30min'})`;
-  }
-
-  if (!msg) return;
-  
-  const payload = { 
-    title: 'Notifikasi Sayang 💌', 
-    body: msg 
-  };
-  
-  // Use minutes and seconds declared above
-  
   console.log(`\n[SEND] ========================================`);
-  console.log(`[SEND] Time: ${now.toLocaleString()} (${hour}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')})`);
-  console.log(`[SEND] Type: ${msgType}`);
-  console.log(`[SEND] Message: "${msg.substring(0, 60)}..."`);
-  console.log(`[SEND] Recipients: ${subscriptions.length}`);
+  console.log(`[SEND] Server Time: ${now.toLocaleString()} (${hour}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')})`);
+  console.log(`[SEND] Processing ${subscriptions.length} subscriptions individually based on subscriber timezone`);
   console.log(`[SEND] ========================================`);
-  
-  let successCount = 0;
-  let failCount = 0;
-  
-  // choose send options based on message type
-  let sendOpts = {};
-  if (msgType && msgType.startsWith('⭐')) {
-    // scheduled: high priority, longer TTL
-    sendOpts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
-  } else {
-    // random: short TTL, normal urgency
-    sendOpts = { TTL: 30, headers: { Urgency: 'normal' } };
-  }
+
+  let totalSuccess = 0;
+  let totalFail = 0;
+
+  const serverNowMs = Date.now();
 
   subscriptions.forEach((sub, idx) => {
-    console.log(`[SEND] Delivering to subscription ${idx + 1}/${subscriptions.length}...`);
-    sendNotification(sub, payload, sendOpts).then(success => {
-      if (success) {
-        successCount++;
-        console.log(`[SEND] Success count: ${successCount}/${subscriptions.length}`);
-      } else {
-        failCount++;
-        console.log(`[SEND] Fail count: ${failCount}`);
+    // Determine subscriber timezone offset in minutes (client getTimezoneOffset semantics)
+    const subOffsetMin = (typeof sub.tzOffsetMinutes === 'number') ? sub.tzOffsetMinutes : (-TIMEZONE_OFFSET * 60);
+    const localNow = new Date(serverNowMs - subOffsetMin * 60000);
+    const localHour = localNow.getHours();
+    const localMin = localNow.getMinutes();
+
+    // Determine if scheduled for this subscriber at their local hour:00
+    let willSendScheduled = false;
+    if (localMin === 0 && scheduledMessages[localHour]) {
+      const lastSentForSub = sub._lastScheduledSentAt || 0;
+      if (serverNowMs - lastSentForSub > 60 * 60 * 1000) {
+        willSendScheduled = true;
       }
-    });
+    }
+
+    // If scheduled, send scheduled message for this subscriber
+    if (willSendScheduled) {
+      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[localHour] };
+      const opts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
+      console.log(`[SEND:${idx + 1}] Sending SCHEDULED to sub (local ${localHour}:00) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
+      sendNotification(sub, payload, opts).then(ok => {
+        if (ok) {
+          totalSuccess++;
+          sub._lastScheduledSentAt = serverNowMs;
+        } else totalFail++;
+      });
+      return;
+    }
+
+    // Otherwise, at :00 or :30 local time decide random
+    if (localMin === 0 || localMin === 30) {
+      // Skip random if within 1-29 minutes before any scheduled for this subscriber
+      let isNear = false;
+      for (const sh of Object.keys(scheduledMessages).map(h => parseInt(h, 10))) {
+        let minutesUntilScheduled = 0;
+        if (sh > localHour) minutesUntilScheduled = (sh - localHour) * 60 - localMin;
+        else if (sh < localHour) minutesUntilScheduled = (24 - localHour + sh) * 60 - localMin;
+        else minutesUntilScheduled = -localMin;
+        if (minutesUntilScheduled >=1 && minutesUntilScheduled <= 29) { isNear = true; break; }
+      }
+      if (isNear) {
+        // skip random for this subscriber
+        console.log(`[SEND:${idx + 1}] Skipping random for sub (near scheduled in ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : 'n/a'})`);
+        return;
+      }
+
+      // Send random message
+      const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
+      const payload = { title: 'Notifikasi Sayang 💌', body: msg };
+      const opts = { TTL: 30, headers: { Urgency: 'normal' } };
+      console.log(`[SEND:${idx + 1}] Sending RANDOM to sub (local ${String(localHour).padStart(2,'0')}:${String(localMin).padStart(2,'0')}) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
+      sendNotification(sub, payload, opts).then(ok => {
+        if (ok) totalSuccess++; else totalFail++;
+      });
+      return;
+    }
+
+    // Not a send time for this subscriber
+    // console.log(`[SEND:${idx + 1}] Not send time for subscriber (local ${localHour}:${localMin})`);
   });
+
+  // update lastMessageMinute to avoid duplicate runs this server-minute
+  lastMessageMinute = (hour * 60 + minutes);
+
+  // Note: individual sendNotification promises update totals asynchronously and log their own results
 }
 
 // Scheduling logic for TESTING:
@@ -646,6 +695,11 @@ app.get('/debug/scheduled', (req, res) => {
   });
 });
 
+// Public endpoint returning full scheduled messages mapping (used by client scheduler)
+app.get('/scheduled', (req, res) => {
+  res.json({ success: true, scheduledMessages });
+});
+
 // Endpoint for client to sync its device time with server
 // Client sends its device time (Date.now()) and gets back server's timing info
 app.post('/sync-time', (req, res) => {
@@ -672,7 +726,19 @@ app.post('/sync-time', (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server listening on ${port}`));
+const server = app.listen(port, () => console.log(`Server listening on ${port}`));
+
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`FATAL: Port ${port} already in use (EADDRINUSE).`);
+    console.error('Tip: stop the other process using this port or set PORT env var to another port.');
+    console.error('On Windows: run `netstat -ano | findstr :'+port+'` then `taskkill /PID <pid> /F`.');
+    process.exit(1);
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
+  }
+});
 
 // Global error handlers so server doesn't exit silently
 process.on('unhandledRejection', (reason, p) => {
