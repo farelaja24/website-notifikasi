@@ -146,18 +146,11 @@ async function startClientScheduler(subscription) {
     console.warn('Could not fetch scheduled mapping from server, using defaults');
   }
 
-  const randomMessages = [
-    'Hai sayang, semangat ya! 💖',
-    'Kangen, sayang? Aku di sini kok 💌',
-    'Selamat hari! Jangan lupa senyum 😊'
-  ];
 
   // Helper to pick random message
   const pickRandom = () => randomMessages[Math.floor(Math.random() * randomMessages.length)];
 
   // Immediately show a welcome (local) and one random
-  showNotificationViaSW('Notifikasi Sayang 💌', 'Terima kasih telah mengizinkan notifikasi!');
-  showNotificationViaSW('Notifikasi Sayang 💌', pickRandom());
 
   // Track last shown minute to avoid duplicates
   let lastMessageMinute = -1;

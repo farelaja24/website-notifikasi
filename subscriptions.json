@@ -5,7 +5,8 @@
     "keys": {
       "auth": "jehAs_Gj-GXI9LGG6uvIrw",
       "p256dh": "BHKz49Z9mGCurW8PUFIk-snUlGSdjWCviUlBTN1jpOOtPtwmzmx7Zv9sJELuOzM1vaS9QcvoQpbCGwXwvww9sA4"
-    }
+    },
+    "tzOffsetMinutes": -480
   },
   {
     "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpkJbFeekgPpVQEamY5sofE4DcPfDZIN9TkQhCLrp92T1zb3Bw-9Iq7VzDtakL_8sun3ekN4dwY0sYU3jb907zTKt3W2vGjMSry-DFuOuJKzZDi9PrYsih7ga4WF3_ixMtDBI4ZAuQbu8Ars4zFaBulNS8YYQ7Et9XeLxOkQB_P0Ij7Zc",
@@ -13,7 +14,8 @@
     "keys": {
       "auth": "yL0-eJ-vYnES176pr58bWQ",
       "p256dh": "BBtL3nrBG-s-frGxnzMzwF4T_tERt1EJuv2FRF4FSNo9Wul8vcgqVrwtU-djSBaS3mHGs7IinEMToWfFnjWceNw"
-    }
+    },
+    "tzOffsetMinutes": -480
   },
   {
     "endpoint": "https://fcm.googleapis.com/fcm/send/ecau3uRfJjc:APA91bGC3RE0oKnljxTrpEz1uqSHZ4fPX-inw7ePkTXbKxIaS2nt-JrUD6wdfh3U30NS9F4JjEfIwl_LIYWVXNKB416GwVoP1Ir_Dtom-I4Li0fEkDG_cA9fNXBYDyTLKelJ1BvFY3zH",
@@ -21,7 +23,8 @@
     "keys": {
       "p256dh": "BFHb85qQM9FWouENelZZAXIAB3gsPYT2cFvkInMirarrzR1C4D9FMdM0uNhNfaLfel2Zf4v5vAWc2xoRA2EqAEg",
       "auth": "7WbTxwRoSeKZQ-cfxg4fvw"
-    }
+    },
+    "tzOffsetMinutes": -480
   },
   {
     "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpkUgnUzoJwyS4gpMrC_qVWAiLUBHlg4AcRx3ALcmhyz0TZYcB8jdCKXcy2PDNHFXsagwy2BT9C0FyorlziLwSftJ0SKHZsrMeDU9QLyWheYRpU0m4FT6HwwZOE8LsEonceENS0CvFC9nF9pJAPG-xUovv_p9ZOcXM3BG5jY1oYUabxgM",
@@ -29,7 +32,8 @@
     "keys": {
       "auth": "kHt8jdCCFxbEijFCXb3Wug",
       "p256dh": "BD8nv-HfYrKfVCQwZ_0rD60Wx7UM1BI-1Zk6jZzAt9yG5wMfU54SnEfQzJp3Ptniwc9sT3V_TH0o_g2Qd9cGDMI"
-    }
+    },
+    "tzOffsetMinutes": -480
   },
   {
     "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpkUwK4Hy-ZgYGg5Qvp5kmz4PkWMfUimka50JZNJVp1SUm-EK3HpWAI7OBpudJptqpH71n9u1b5R87wo_unjI5ENGem4eGJ3arrAEavDeZ2EMWZmwbxRNGbGfkhKJBTIYa9jAagPztHjuLL_YYobrGGzVF23E_wLBerWEou7bcpg41OMM",
@@ -37,7 +41,8 @@
     "keys": {
       "auth": "i8_Xcp6eLtGtRw9G6oBHqA",
       "p256dh": "BO9fYbB9D_81GsVOahsipV_oa3stjOwSDZFWvP1676O5HGmy7kIj0PoEAItqSZyLqn_NfUcyJc1YKtNAHijZ_oM"
-    }
+    },
+    "tzOffsetMinutes": -480
   },
   {
     "endpoint": "https://updates.push.services.mozilla.com/wpush/v2/gAAAAABpkU9I_D3KfAzeaXXUxOFPu484sygwQ0BWZFi6R9E-DuBtjzFSaQwajljmWdKtcHnQZnsuXVKzh-7m0YMs124CgQm4jB_xcNwM-bUnqHRWpY1D1xt_-DwD5lRTF_KDVTHUEACGtIYo9sWglYSvssi792t9ouil8gkmkbXtmg7xkTe18lQ",
@@ -45,6 +50,38 @@
     "keys": {
       "auth": "HGgM7DRb8q5-ugDyVnUCag",
       "p256dh": "BCcAG1Ap7x7HZ0xqv5-lROwmWRg75MOPc8FNYTx573AVi3y-rGajIYF_rnDNUVkT9T6DHP98As5fLtQ14rfuHoE"
-    }
+    },
+    "tzOffsetMinutes": -480
+  },
+  {
+    "tzOffsetMinutes": -480,
+    "tz": "Asia/Makassar"
+  },
+  {
+    "endpoint": "https://wns2-pn1p.notify.windows.com/w/?token=BQYAAADc%2fqEdWdMMvUY%2ftrB%2foWCMfCXNpeEUKxuw%2bSqgAJeVQ3%2fDloao1s64TuCVV7GvMl%2fNP7B7083%2fyOC%2bnq3GhTyGuH%2fHRVtsg%2ft8%2bSCSsdZjHPLZseslglM%2fowYJoXDP8vEja%2b3lvy0ucHXliOdaqpbi7QubI7OzUNmzL5a3Sy7E1ESFdk%2fWtLnJoX22tnoP9UAMnbzpHzBDjkrqhrW6Pn9K1dcpmvCI%2bLWp%2fSoE2ki9qBqQ06mcghoxCmZ4vGqNQxa6go96fF5EfXPYwqk0NUrLwIFNANC7B0FMpKe1gFll%2fJeKgTUgxP9QMhWx%2fgKTWBNV8dbhdagzBIz8YPKQcEgQ",
+    "expirationTime": null,
+    "keys": {
+      "p256dh": "BG_VQXhH3F4ApI42v6plmC5PahMYIMBM_yjit1401qwqrn91EJic3gfyHg-DBBYkR8r3Mvy_CunBCVBFYhmP3BM",
+      "auth": "wimBThmWcgHkxf1jOJoWiw"
+    },
+    "tzOffsetMinutes": -480
+  },
+  {
+    "endpoint": "https://wns2-pn1p.notify.windows.com/w/?token=BQYAAAC%2f0BdZ6K7BB73BHgv8lSLxO9%2fRZBOXE8G9V5J98SsqtpKLhga4u697Ty2ClC9r27Cm30LaL3KOQnl3dokNbIk2wDYYrWMTW2SBIzYRT09dBKvyrxcCikDUZuLhAf%2bn22kyQBaET%2bpi34iN5M%2bTHBEsSTYCbtayu4ZAn5WAU%2fGFK423nAmlcJfIKLfJgx8ZQq4xGO8a8nMdXKSuL5YuzT1%2fx04ygf3GezGMoWFADJ%2bs2Ap85eeDdpu%2fQykxxT52Ip7QXd16K1kH%2fMOj21V7eRtrmVLC0FXEs6tGseMQIiaVyqHeYWLRL1l0qNoh%2fz4lebs%3d",
+    "expirationTime": null,
+    "keys": {
+      "p256dh": "BDaUpXsXVMSEsjTZ4fDAjWXNK7ZhJpI_penIDx7U_uo9c0TPGIyHNJ27r0DCOtWYRxM8Jb8ukrRhy2JD7hKDFmg",
+      "auth": "OZYXObQf8Jmtr3h3T-1BQg"
+    },
+    "tzOffsetMinutes": -480
+  },
+  {
+    "endpoint": "https://wns2-pn1p.notify.windows.com/w/?token=BQYAAAB0hRqKPq15KyGWqyHQEmfNb8arH0qqMznR%2b7bEmlqFIIQZ1io9u3aWb82NVJVdzTOzlqhjoE0R41AJUlG%2bC3ipdajIVFC7YBJFmz6Lmt0TzL%2f9JyEQLikkiUCF3InIjNG4lYFBOekjX5FSvpHpSJZXWZisv9Kon9EcyfDIHMkhct9Ohl5BJ8FzzasIhixQUtcy8%2bV7zzij51vllM05hQ%2bhjyw26xOWESpK0s1zQCfXG9IXZ5SvoRs6eadvQpO%2beCF7UxFiyYKn7jX8QB1D9IEPPWdW%2for7J0my2ETXvgFpA0XDNOHCQEGoiq7roWsU1XI%3d",
+    "expirationTime": null,
+    "keys": {
+      "p256dh": "BJxEq9I2kyEWStI-_dEBFs44xq4TtnJX4_HvuIgDg94p7FBnp-Q0zvkqi6jXJMjisbTgEVWbAvTP-Gxy_EDZ_2c",
+      "auth": "WGffQJsA-h6Xe-muXFKq8g"
+    },
+    "tzOffsetMinutes": -480
   }
 ]

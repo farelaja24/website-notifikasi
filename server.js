@@ -1,3 +1,5 @@
+// Paksa timezone Node.js ke Asia/Singapore
+process.env.TZ = 'Asia/Singapore';
 const express = require('express');
 const bodyParser = require('body-parser');
 const webpush = require('web-push');
@@ -31,6 +33,10 @@ try {
     }
   }
 } catch (e) {
+
+    // =============================
+    // AUTO PUSH SCHEDULER (5 MENIT)
+    // =============================
   console.error('VAPID key handling error:', e);
 }
 
@@ -47,8 +53,14 @@ let subscriptions = [];
 // Support timezone offset for Railway deployments
 // Default: 8 (WITA - Balikpapan/Kalimantan Timur). Set TIMEZONE_OFFSET env var to override.
 // WITA = 8, WIB = 7, WIT = 9
+
 const TIMEZONE_OFFSET = parseInt(process.env.TIMEZONE_OFFSET || '8', 10);
+const now = new Date();
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 console.log(`[INIT] Timezone offset: UTC+${TIMEZONE_OFFSET} (Balikpapan WITA)`);
+console.log(`[INIT] Server Timezone: ${tz}`);
+console.log(`[INIT] Server Local Time: ${now.toLocaleString('en-US', { timeZone: tz, hour12: false })}`);
+console.log(`[INIT] Server ISO Time: ${now.toISOString()}`);
 
 function getLocalTime() {
   const utc = new Date();
@@ -427,7 +439,10 @@ function sendAllRandom() {
   // Prevent duplicate sends within the same server-minute
   if (lastMessageMinute === (hour * 60 + minutes)) {
     console.log(`[SEND] ℹ️  Already sent message this minute, skipping duplicate`);
-    return;
+
+
+
+    // ...existing code...
   }
 
   console.log(`\n[SEND] ========================================`);
