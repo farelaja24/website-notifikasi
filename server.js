@@ -1,5 +1,16 @@
-// Paksa timezone Node.js ke Asia/Singapore
-process.env.TZ = 'Asia/Singapore';
+// =============================
+// TIMEZONE HANDLING (FIXED)
+// =============================
+
+// Server ALWAYS uses UTC
+// Scheduled messages are written in WITA (UTC+8)
+const WITA_OFFSET = 8;
+
+function witaToUtcHour(witaHour) {
+  return (witaHour - WITA_OFFSET + 24) % 24;
+}
+
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const webpush = require('web-push');
@@ -54,19 +65,11 @@ let subscriptions = [];
 // Default: 8 (WITA - Balikpapan/Kalimantan Timur). Set TIMEZONE_OFFSET env var to override.
 // WITA = 8, WIB = 7, WIT = 9
 
-const TIMEZONE_OFFSET = parseInt(process.env.TIMEZONE_OFFSET || '8', 10);
 const now = new Date();
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-console.log(`[INIT] Timezone offset: UTC+${TIMEZONE_OFFSET} (Balikpapan WITA)`);
 console.log(`[INIT] Server Timezone: ${tz}`);
 console.log(`[INIT] Server Local Time: ${now.toLocaleString('en-US', { timeZone: tz, hour12: false })}`);
 console.log(`[INIT] Server ISO Time: ${now.toISOString()}`);
-
-function getLocalTime() {
-  const utc = new Date();
-  const offset = TIMEZONE_OFFSET * 60 * 60 * 1000;
-  return new Date(utc.getTime() + offset);
-}
 
 // FORCE_SCHEDULED: when true, send scheduled message every minute for testing
 // Default: false for production. Set env var FORCE_SCHEDULED=true to enable testing.
@@ -99,17 +102,6 @@ if (subscriptions.length === 0) {
 // Helper to persist subscriptions (both file and env var)
 function persistSubscriptions() {
   try {
-    // Ensure each subscription has timezone metadata for per-subscriber scheduling
-    subscriptions = subscriptions.map(s => {
-      const copy = Object.assign({}, s);
-      if (typeof copy.tzOffsetMinutes !== 'number') {
-        // client getTimezoneOffset() semantics: minutes offset UTC - local
-        // fallback: infer from server TIMEZONE_OFFSET (hours)
-        copy.tzOffsetMinutes = -TIMEZONE_OFFSET * 60;
-      }
-      return copy;
-    });
-
     fs.writeFileSync(SUBS_FILE, JSON.stringify(subscriptions, null, 2));
     // For Railway: you can manually set SUBSCRIPTIONS_DATA env var from subscriptions.json content
     // Or implement a function to push to Railway config
@@ -229,21 +221,6 @@ app.get('/debug/export-subscriptions', (req, res) => {
   });
 });
 
-// Debug endpoint: migrate existing subscriptions to include timezone metadata
-app.post('/debug/migrate-subscriptions', (req, res) => {
-  let updated = 0;
-  subscriptions = subscriptions.map(s => {
-    const copy = Object.assign({}, s);
-    if (typeof copy.tzOffsetMinutes !== 'number') {
-      copy.tzOffsetMinutes = -TIMEZONE_OFFSET * 60;
-      updated++;
-    }
-    return copy;
-  });
-  persistSubscriptions();
-  res.json({ success: true, updated, total: subscriptions.length });
-});
-
 // Debug endpoint: force-send scheduled messages to all subscriptions based on their stored timezone
 app.post('/debug/send-scheduled-all', (req, res) => {
   const nowMs = Date.now();
@@ -252,20 +229,33 @@ app.post('/debug/send-scheduled-all', (req, res) => {
   let failed = 0;
 
   subscriptions.forEach(sub => {
-    const subOffsetMin = (typeof sub.tzOffsetMinutes === 'number') ? sub.tzOffsetMinutes : (-TIMEZONE_OFFSET * 60);
-    const localNow = new Date(nowMs - subOffsetMin * 60000);
-    const localHour = localNow.getHours();
-    // If there is a scheduled message for subscriber local hour, send it
-    if (scheduledMessages[localHour]) {
-      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[localHour] };
-      const opts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
-      sendNotification(sub, payload, opts).then(ok => {
-        if (ok) sent++; else failed++;
-      }).catch(() => { failed++; });
-    } else {
-      skipped++;
-    }
-  });
+  const utcNow = new Date();
+  const utcHour = utcNow.getUTCHours();
+
+  if (scheduledMessages[utcHour]) {
+    const payload = {
+      title: 'Notifikasi Sayang 💌',
+      body: scheduledMessages[utcHour]
+    };
+
+    const opts = {
+      TTL: 60 * 60,
+      headers: { Urgency: 'high' }
+    };
+
+    sendNotification(sub, payload, opts)
+      .then(ok => {
+        if (ok) sent++;
+        else failed++;
+      })
+      .catch(() => {
+        failed++;
+      });
+  } else {
+    skipped++;
+  }
+});
+
 
   res.json({ success: true, triggeredAt: new Date(nowMs).toISOString(), sentEstimated: sent, skipped, failed });
 });
@@ -284,15 +274,24 @@ const messages30min = [
   'SAYANGGGG MAW DUNG PAPNYAA AKU KANGENNNN SAYANGGGGG'
 ];
 
-const scheduledMessages = {
-  23: 'MORNING SAYANGKUW CINTAKUWWW, SEMOGAA HARI INII SAYANGG BISAKK BAHAGIA DAN SENENGGG DAN MOOD SAYANGG TERJAGAA, JANGAN LUPAA MINUM AIR PUTIH DULU YAKKK💘💘💘💘',
-  2: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
-  5: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
-  8: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
-  12: 'JANGAN LUPAA MAM YAK SAYANGG KALO SAYANG MASI LAPERR CINTAAAAAA, I LOVVVVVV UUUUU MOREEEE SAYANGGGG',
-  14: 'BOBONYA JANGAN TERLALU MALAM YAKK CANTIKKKKKK, SAYANGG JAGA KESEHATANNNNN YAKKKKK',
-  15: 'CAMAT BOBO SAYANGGG, JANGAN LUPAA BACAA DOAA SAYANGG, MIMPII INDAHH DANN BOBO YANG NYENYAK SAYANGGG, GUDNAIT SAYANGGG, I LOVVVVVV UUUUU MOREEEE SAYANGGGG CANTIKKK UCUKKK GEMESHH BAHENOL SEXYYY, BABAYY SAYANGGGGG'
+const scheduledMessagesWita = {
+  7: 'MORNING SAYANGKUW CINTAKUWWW, SEMOGAA HARI INII SAYANGG BISAKK BAHAGIA DAN SENENGGG DAN MOOD SAYANGG TERJAGAA, JANGAN LUPAA MINUM AIR PUTIH DULU YAKKK💘💘💘💘',
+  10: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
+  13: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
+  16: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
+  20: 'JANGAN LUPAA MAM YAK SAYANGG KALO SAYANG MASI LAPERR CINTAAAAAA, I LOVVVVVV UUUUU MOREEEE SAYANGGGG',
+  22: 'BOBONYA JANGAN TERLALU MALAM YAKK CANTIKKKKKK, SAYANGG JAGA KESEHATANNNNN YAKKKKK',
+  23: 'CAMAT BOBO SAYANGGG, JANGAN LUPAA BACAA DOAA SAYANGG, MIMPII INDAHH DANN BOBO YANG NYENYAK SAYANGGG, GUDNAIT SAYANGGG, I LOVVVVVV UUUUU MOREEEE SAYANGGGG CANTIKKK UCUKKK GEMESHH BAHENOL SEXYYY, BABAYY SAYANGGGGG'
 };
+
+const scheduledMessages = {};
+
+for (const witaHour in scheduledMessagesWita) {
+  const utcHour = witaToUtcHour(Number(witaHour));
+  scheduledMessages[utcHour] = scheduledMessagesWita[witaHour];
+}
+
+console.log('[INIT] Scheduled messages (UTC):', scheduledMessages);
 
 async function sendNotification(sub, payload, opts = {}, retryCount = 0) {
   const MAX_RETRIES = 2;
@@ -371,6 +370,44 @@ async function sendNotification(sub, payload, opts = {}, retryCount = 0) {
   }
 }
 
+let lastMinuteKey = null;
+
+function sendAll() {
+  if (!subscriptions.length) return;
+
+  const now = nowUtc();
+  const hour = now.getUTCHours();
+  const min = now.getUTCMinutes();
+
+  const minuteKey = hour * 60 + min;
+  if (minuteKey === lastMinuteKey) return;
+  lastMinuteKey = minuteKey;
+
+  subscriptions.forEach(sub => {
+
+    // scheduled (UTC :00)
+    if (min === 0 && scheduledMessages[hour]) {
+      sendNotification(sub, {
+        title: 'Notifikasi Sayang 💌',
+        body: scheduledMessages[hour]
+      });
+      return;
+    }
+
+    // random (:00 / :30)
+    if (min === 0 || min === 30) {
+      const msg = messages30min[
+        Math.floor(Math.random() * messages30min.length)
+      ];
+      sendNotification(sub, {
+        title: 'Notifikasi Sayang 💌',
+        body: msg
+      }, { TTL: 30 });
+    }
+
+  });
+}
+
 // Track last messages sent to avoid duplicates
 let lastMessageMinute = -1;
 // Use timestamp to track last scheduled send (for 60-second guard)
@@ -381,7 +418,7 @@ let lastRandomSentAt = 0; // epoch ms of last random message sent
 let suppressRandomUntil = 0; // epoch ms - don't send random until this time
 
 function checkIfNearScheduled() {
-  const now = getLocalTime();
+  const now = new Date();
   const hour = now.getHours();
   const minutes = now.getMinutes();
   
@@ -424,7 +461,7 @@ function sendAllRandom() {
     return;
   }
 
-  const now = getLocalTime();
+  const now = new Date();
   const hour = now.getHours();
   // Use minutes and seconds declared above
   const minutes = now.getMinutes();
@@ -457,9 +494,7 @@ function sendAllRandom() {
 
   subscriptions.forEach((sub, idx) => {
     // Determine subscriber timezone offset in minutes (client getTimezoneOffset semantics)
-    const subOffsetMin = (typeof sub.tzOffsetMinutes === 'number') ? sub.tzOffsetMinutes : (-TIMEZONE_OFFSET * 60);
-    const localNow = new Date(serverNowMs - subOffsetMin * 60000);
-    const localHour = localNow.getHours();
+
     const localMin = localNow.getMinutes();
 
     // Determine if scheduled for this subscriber at their local hour:00
@@ -561,7 +596,7 @@ if (testIntervalSec && testIntervalSec > 0) {
   let lastCheckHour = -1;
 
   setInterval(() => {
-    const now = getLocalTime();
+    const now = new Date();
     const hour = now.getHours();
 
     // Reset scheduled tracker when hour changes
@@ -609,7 +644,7 @@ function sendWelcomeNotification(sub) {
 
 // Calculate time until next message (every 30 minutes, unless near scheduled)
 function getTimeUntilNextMessage() {
-  const now = getLocalTime();
+  const now = new Date();
   const hour = now.getHours();
   const minutes = now.getMinutes();
   
@@ -677,16 +712,14 @@ app.post('/sendWelcome', (req, res) => {
 
 // Debug: expose scheduler state for troubleshooting
 app.get('/debug/state', (req, res) => {
-  const now = getLocalTime();
+  const now = new Date();
   res.json({
     subscriptions: subscriptions.length,
     lastMessageMinute,
     lastScheduledSentAt,
     lastScheduledSentAtIso: lastScheduledSentAt ? new Date(lastScheduledSentAt).toISOString() : null,
-    serverTime: now.toISOString(),
-    timezoneOffset: TIMEZONE_OFFSET,
-    currentHour: now.getHours(),
-    currentMinute: now.getMinutes(),
+   currentHour: now.getUTCHours(),
+currentMinute: now.getUTCMinutes(),
     scheduledHours: Object.keys(scheduledMessages).map(h => parseInt(h, 10)),
     scheduledMessages: scheduledMessages
   });
@@ -694,7 +727,7 @@ app.get('/debug/state', (req, res) => {
 
 // Debug: list all scheduled messages with their content
 app.get('/debug/scheduled', (req, res) => {
-  const now = getLocalTime();
+  const now = new Date();
   const hour = now.getHours();
   const messages = Object.entries(scheduledMessages).map(([h, msg]) => ({
     hour: parseInt(h),
@@ -705,7 +738,6 @@ app.get('/debug/scheduled', (req, res) => {
   res.json({
     currentHour: hour,
     currentTime: now.toISOString(),
-    timezoneOffset: TIMEZONE_OFFSET,
     scheduledMessages: messages
   });
 });
@@ -720,7 +752,7 @@ app.get('/scheduled', (req, res) => {
 app.post('/sync-time', (req, res) => {
   const clientDeviceTime = req.body.deviceTime || Date.now();
   const serverTime = Date.now();
-  const now = getLocalTime();
+  const now = new Date();
   
   // Calculate time drift (how many ms client is ahead/behind server)
   const timeDrift = clientDeviceTime - serverTime;
@@ -731,7 +763,6 @@ app.post('/sync-time', (req, res) => {
     serverTime,
     serverLocalTime: now.toISOString(),
     timeDrift,
-    timezoneOffset: TIMEZONE_OFFSET,
     suppressRandomUntil,
     lastScheduledSentAt,
     lastRandomSentAt,
