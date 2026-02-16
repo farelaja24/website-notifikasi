@@ -446,10 +446,7 @@ function sendAllRandom() {
   // Prevent duplicate sends within the same server-minute
   if (lastMessageMinute === (hour * 60 + minutes)) {
     console.log(`[SEND] ℹ️  Already sent message this minute, skipping duplicate`);
-
-
-
-    // ...existing code...
+    return;
   }
 
   console.log(`\n[SEND] ========================================`);
