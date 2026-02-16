@@ -1,13 +1,25 @@
 // =============================
-// TIMEZONE HANDLING (FIXED)
+// TIMEZONE HANDLING (FLEXIBLE)
 // =============================
 
 // Server ALWAYS uses UTC
-// Scheduled messages are written in WITA (UTC+8)
-const WITA_OFFSET = 8;
+// Timezone configuration
+const TIMEZONES = {
+  WIB: 7,  // Waktu Indonesia Barat (UTC+7)
+  WITA: 8, // Waktu Indonesia Tengah (UTC+8)
+  WIT: 9   // Waktu Indonesia Timur (UTC+9)
+};
 
-function witaToUtcHour(witaHour) {
-  return (witaHour - WITA_OFFSET + 24) % 24;
+// Default timezone (can be overridden with environment variable)
+const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'WITA';
+const DEFAULT_OFFSET = TIMEZONES[DEFAULT_TIMEZONE] || 8;
+
+function convertToUtcHour(localHour, offset = DEFAULT_OFFSET) {
+  return (localHour - offset + 24) % 24;
+}
+
+function convertToLocalHour(utcHour, offset = DEFAULT_OFFSET) {
+  return (utcHour + offset) % 24;
 }
 
 
@@ -229,11 +241,11 @@ app.post('/debug/send-scheduled-all', (req, res) => {
   let failed = 0;
 
   subscriptions.forEach(sub => {
-    const localNow = new Date(nowMs - subOffsetMin * 60000);
-    const localHour = localNow.getHours();
-    // If there is a scheduled message for subscriber local hour, send it
-    if (scheduledMessages[localHour]) {
-      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[localHour] };
+    const utcNow = new Date(nowMs);
+    const utcHour = utcNow.getUTCHours();
+    // Check if current UTC hour matches any scheduled message
+    if (scheduledMessages[utcHour]) {
+      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[utcHour] };
       const opts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
       sendNotification(sub, payload, opts).then(ok => {
         if (ok) sent++; else failed++;
@@ -260,7 +272,7 @@ const messages30min = [
   'SAYANGGGG MAW DUNG PAPNYAA AKU KANGENNNN SAYANGGGGG'
 ];
 
-const scheduledMessagesWita = {
+const scheduledMessagesLocal = {
   7: 'MORNING SAYANGKUW CINTAKUWWW, SEMOGAA HARI INII SAYANGG BISAKK BAHAGIA DAN SENENGGG DAN MOOD SAYANGG TERJAGAA, JANGAN LUPAA MINUM AIR PUTIH DULU YAKKK💘💘💘💘',
   10: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
   13: 'JANGAN LUPAA MAMM YAK CINTAKUW SAYANGG, BIAR TIDAA KOSONG PEYUTNYAAAAA, SEMANGAT SAYANGGG, CAMAT MAM SAYANGG DAN KENYANGIN CINTAAAAAA DAN JANGAN LUPA MINUM VITAMIN CINTAAA',
@@ -270,14 +282,22 @@ const scheduledMessagesWita = {
   23: 'CAMAT BOBO SAYANGGG, JANGAN LUPAA BACAA DOAA SAYANGG, MIMPII INDAHH DANN BOBO YANG NYENYAK SAYANGGG, GUDNAIT SAYANGGG, I LOVVVVVV UUUUU MOREEEE SAYANGGGG CANTIKKK UCUKKK GEMESHH BAHENOL SEXYYY, BABAYY SAYANGGGGG'
 };
 
+
 const scheduledMessages = {};
 
-for (const witaHour in scheduledMessagesWita) {
-  const utcHour = witaToUtcHour(Number(witaHour));
-  scheduledMessages[utcHour] = scheduledMessagesWita[witaHour];
+for (const localHour in scheduledMessagesLocal) {
+  const utcHour = convertToUtcHour(Number(localHour));
+  scheduledMessages[utcHour] = scheduledMessagesLocal[localHour];
 }
 
-console.log('[INIT] Scheduled messages (UTC):', scheduledMessages);
+console.log(`[INIT] Default timezone: ${DEFAULT_TIMEZONE} (UTC+${DEFAULT_OFFSET})`);
+console.log('[INIT] Scheduled messages mapping:');
+for (const localHour in scheduledMessagesLocal) {
+  const utcHour = convertToUtcHour(Number(localHour));
+  console.log(`  Local ${localHour}:00 → UTC ${utcHour}:00`);
+}
+console.log('[INIT] Scheduled messages (UTC hours):', Object.keys(scheduledMessages).sort((a,b) => a-b));
+
 
 async function sendNotification(sub, payload, opts = {}, retryCount = 0) {
   const MAX_RETRIES = 2;
@@ -356,43 +376,7 @@ async function sendNotification(sub, payload, opts = {}, retryCount = 0) {
   }
 }
 
-let lastMinuteKey = null;
 
-function sendAll() {
-  if (!subscriptions.length) return;
-
-  const now = nowUtc();
-  const hour = now.getUTCHours();
-  const min = now.getUTCMinutes();
-
-  const minuteKey = hour * 60 + min;
-  if (minuteKey === lastMinuteKey) return;
-  lastMinuteKey = minuteKey;
-
-  subscriptions.forEach(sub => {
-
-    // scheduled (UTC :00)
-    if (min === 0 && scheduledMessages[hour]) {
-      sendNotification(sub, {
-        title: 'Notifikasi Sayang 💌',
-        body: scheduledMessages[hour]
-      });
-      return;
-    }
-
-    // random (:00 / :30)
-    if (min === 0 || min === 30) {
-      const msg = messages30min[
-        Math.floor(Math.random() * messages30min.length)
-      ];
-      sendNotification(sub, {
-        title: 'Notifikasi Sayang 💌',
-        body: msg
-      }, { TTL: 30 });
-    }
-
-  });
-}
 
 // Track last messages sent to avoid duplicates
 let lastMessageMinute = -1;
@@ -479,13 +463,16 @@ function sendAllRandom() {
   const serverNowMs = Date.now();
 
   subscriptions.forEach((sub, idx) => {
-    // Determine subscriber timezone offset in minutes (client getTimezoneOffset semantics)
+    const subOffset = sub.timezoneOffset || DEFAULT_OFFSET;
+    const utcNow = new Date(serverNowMs);
+    const utcHour = utcNow.getUTCHours();
+    const utcMin = utcNow.getUTCMinutes();
+    const localHour = convertToLocalHour(utcHour, subOffset);
+    const localMin = utcMin;
 
-    const localMin = localNow.getMinutes();
-
-    // Determine if scheduled for this subscriber at their local hour:00
+    // Check if current UTC time matches scheduled message time
     let willSendScheduled = false;
-    if (localMin === 0 && scheduledMessages[localHour]) {
+    if (utcMin === 0 && scheduledMessages[utcHour]) {
       const lastSentForSub = sub._lastScheduledSentAt || 0;
       if (serverNowMs - lastSentForSub > 60 * 60 * 1000) {
         willSendScheduled = true;
@@ -494,9 +481,9 @@ function sendAllRandom() {
 
     // If scheduled, send scheduled message for this subscriber
     if (willSendScheduled) {
-      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[localHour] };
+      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[utcHour] };
       const opts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
-      console.log(`[SEND:${idx + 1}] Sending SCHEDULED to sub (local ${localHour}:00) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
+      console.log(`[SEND:${idx + 1}] Sending SCHEDULED to sub (UTC ${utcHour}:00 = Local ${localHour}:00) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
       sendNotification(sub, payload, opts).then(ok => {
         if (ok) {
           totalSuccess++;
@@ -506,20 +493,19 @@ function sendAllRandom() {
       return;
     }
 
-    // Otherwise, at :00 or :30 local time decide random
-    if (localMin === 0 || localMin === 30) {
-      // Skip random if within 1-29 minutes before any scheduled for this subscriber
+    // Send random at :00 or :30 UTC time
+    if (utcMin === 0 || utcMin === 30) {
+      // Skip random if within 1-29 minutes before any scheduled (check UTC hours)
       let isNear = false;
-      for (const sh of Object.keys(scheduledMessages).map(h => parseInt(h, 10))) {
+      for (const scheduledUtcHour of Object.keys(scheduledMessages).map(h => parseInt(h, 10))) {
         let minutesUntilScheduled = 0;
-        if (sh > localHour) minutesUntilScheduled = (sh - localHour) * 60 - localMin;
-        else if (sh < localHour) minutesUntilScheduled = (24 - localHour + sh) * 60 - localMin;
-        else minutesUntilScheduled = -localMin;
+        if (scheduledUtcHour > utcHour) minutesUntilScheduled = (scheduledUtcHour - utcHour) * 60 - utcMin;
+        else if (scheduledUtcHour < utcHour) minutesUntilScheduled = (24 - utcHour + scheduledUtcHour) * 60 - utcMin;
+        else minutesUntilScheduled = -utcMin;
         if (minutesUntilScheduled >=1 && minutesUntilScheduled <= 29) { isNear = true; break; }
       }
       if (isNear) {
-        // skip random for this subscriber
-        console.log(`[SEND:${idx + 1}] Skipping random for sub (near scheduled in ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : 'n/a'})`);
+        console.log(`[SEND:${idx + 1}] Skipping random (near scheduled)`);
         return;
       }
 
@@ -527,7 +513,7 @@ function sendAllRandom() {
       const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
       const payload = { title: 'Notifikasi Sayang 💌', body: msg };
       const opts = { TTL: 30, headers: { Urgency: 'normal' } };
-      console.log(`[SEND:${idx + 1}] Sending RANDOM to sub (local ${String(localHour).padStart(2,'0')}:${String(localMin).padStart(2,'0')}) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
+      console.log(`[SEND:${idx + 1}] Sending RANDOM to sub (UTC ${String(utcHour).padStart(2,'0')}:${String(utcMin).padStart(2,'0')} = Local ${String(localHour).padStart(2,'0')}:${String(localMin).padStart(2,'0')}) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
       sendNotification(sub, payload, opts).then(ok => {
         if (ok) totalSuccess++; else totalFail++;
       });
@@ -704,8 +690,11 @@ app.get('/debug/state', (req, res) => {
     lastMessageMinute,
     lastScheduledSentAt,
     lastScheduledSentAtIso: lastScheduledSentAt ? new Date(lastScheduledSentAt).toISOString() : null,
-   currentHour: now.getUTCHours(),
-currentMinute: now.getUTCMinutes(),
+    currentHour: now.getUTCHours(),
+    currentMinute: now.getUTCMinutes(),
+    currentLocalHour: convertToLocalHour(now.getUTCHours()),
+    defaultTimezone: DEFAULT_TIMEZONE,
+    defaultOffset: DEFAULT_OFFSET,
     scheduledHours: Object.keys(scheduledMessages).map(h => parseInt(h, 10)),
     scheduledMessages: scheduledMessages
   });
