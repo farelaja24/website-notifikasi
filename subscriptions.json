@@ -83,5 +83,14 @@
       "auth": "WGffQJsA-h6Xe-muXFKq8g"
     },
     "tzOffsetMinutes": -480
+  },
+  {
+    "endpoint": "https://wns2-pn1p.notify.windows.com/w/?token=BQYAAAAFN1VjhPG%2fFtu33v61OczGqxnDnKgb%2fVnj%2fOtkZYncbjC26jkKkVSOKOVeO%2bxDZW2Eo2yTALUgPX0zgPRXJgJ%2f8%2bfU9eDKXLqp4Q3NATgVCyA%2fNxS761oP1dBV5Pf9Q0zCu10XAwIPfyih9UM28%2ffO2fPvH0MxKQci7nPhk%2floekNsrvRrs7JGK8zzVTF42ADIC2cbxStX%2bBqJ%2bfZuSQxRuga9%2bIjYsg3eLHFDrtLS20%2fF9ZwHjlBW%2fUp9oyNpUEhRIiE2iwXQohNSeR%2bUzUFrc7GIj%2bI9LiKZVFofBPRJa1BQB8QS0N%2bLe23j%2bcQnFBNYQtOJLC4wuEwg%2fS%2fvkIe5",
+    "expirationTime": null,
+    "keys": {
+      "p256dh": "BF430ErTDseizmTJPYo5lYgkMvBZvohVpHJVevH_gupxbd75Wv0zTVYjBTAmN4zWdB5-BfckSXnboR3YfWqgOjA",
+      "auth": "74vXAB4-Wqd5N-VztXWS8w"
+    },
+    "tzOffsetMinutes": -480
   }
 ]
