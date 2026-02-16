@@ -108,12 +108,14 @@ async function sendNotification(sub, payload) {
 }
 
 // Send messages
-let lastSend = 0;
+let lastScheduledHour = -1;
 
 function sendMessages() {
-  const now = Date.now();
+  const now = new Date();
+  const hour = now.getHours();
+  const min = now.getMinutes();
   
-  console.log(`[CHECK] Time: ${new Date().toLocaleTimeString()} - VAPID: ${!!VAPID_PUBLIC}, Subs: ${subscriptions.length}`);
+  console.log(`[CHECK] ${hour}:${String(min).padStart(2,'0')} - VAPID: ${!!VAPID_PUBLIC}, Subs: ${subscriptions.length}`);
 
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
     console.log('[SEND] ⚠ VAPID not configured');
@@ -125,17 +127,25 @@ function sendMessages() {
     return;
   }
 
-  // Send random message every time
-  const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
-  const payload = { title: 'Notifikasi Sayang 💌', body: msg };
-  console.log(`[SEND] RANDOM to ${subscriptions.length} subscribers`);
+  let payload;
+  
+  // Check if current hour has scheduled message
+  if (scheduledMessages[hour] && lastScheduledHour !== hour) {
+    // Send scheduled message
+    payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[hour] };
+    console.log(`[SEND] SCHEDULED at ${hour}:00 to ${subscriptions.length} subscribers`);
+    lastScheduledHour = hour;
+  } else {
+    // Send random message
+    const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
+    payload = { title: 'Notifikasi Sayang 💌', body: msg };
+    console.log(`[SEND] RANDOM to ${subscriptions.length} subscribers`);
+  }
   
   subscriptions.forEach((sub, idx) => {
     console.log(`[SEND] Sending to subscriber ${idx + 1}/${subscriptions.length}`);
     sendNotification(sub, payload);
   });
-  
-  lastSend = now;
 }
 
 // Routes
@@ -256,7 +266,7 @@ app.post('/sync-time', (req, res) => {
 // Scheduler
 console.log('[INIT] Setting up scheduler...');
 console.log('[INIT] Current time:', new Date().toLocaleString());
-console.log('[INIT] Sending notification every 10 seconds');
+console.log('[INIT] Sending notification every 30 minutes');
 
 setTimeout(() => {
   console.log('[SCHEDULER] Initial check...');
@@ -266,7 +276,7 @@ setTimeout(() => {
 setInterval(() => {
   console.log('[SCHEDULER] Periodic check...');
   sendMessages();
-}, 10 * 1000);
+}, 30 * 60 * 1000);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Server listening on ${port}`));
