@@ -229,33 +229,19 @@ app.post('/debug/send-scheduled-all', (req, res) => {
   let failed = 0;
 
   subscriptions.forEach(sub => {
-  const utcNow = new Date();
-  const utcHour = utcNow.getUTCHours();
-
-  if (scheduledMessages[utcHour]) {
-    const payload = {
-      title: 'Notifikasi Sayang 💌',
-      body: scheduledMessages[utcHour]
-    };
-
-    const opts = {
-      TTL: 60 * 60,
-      headers: { Urgency: 'high' }
-    };
-
-    sendNotification(sub, payload, opts)
-      .then(ok => {
-        if (ok) sent++;
-        else failed++;
-      })
-      .catch(() => {
-        failed++;
-      });
-  } else {
-    skipped++;
-  }
-});
-
+    const localNow = new Date(nowMs - subOffsetMin * 60000);
+    const localHour = localNow.getHours();
+    // If there is a scheduled message for subscriber local hour, send it
+    if (scheduledMessages[localHour]) {
+      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[localHour] };
+      const opts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
+      sendNotification(sub, payload, opts).then(ok => {
+        if (ok) sent++; else failed++;
+      }).catch(() => { failed++; });
+    } else {
+      skipped++;
+    }
+  });
 
   res.json({ success: true, triggeredAt: new Date(nowMs).toISOString(), sentEstimated: sent, skipped, failed });
 });
