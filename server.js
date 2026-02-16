@@ -107,9 +107,7 @@ async function sendNotification(sub, payload) {
   }
 }
 
-// Send messages
-let lastScheduledHour = -1;
-
+// Send messages (random only)
 function sendMessages() {
   const now = new Date();
   const hour = now.getHours();
@@ -127,20 +125,10 @@ function sendMessages() {
     return;
   }
 
-  let payload;
-  
-  // Check if current hour has scheduled message
-  if (scheduledMessages[hour] && lastScheduledHour !== hour) {
-    // Send scheduled message
-    payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[hour] };
-    console.log(`[SEND] SCHEDULED at ${hour}:00 to ${subscriptions.length} subscribers`);
-    lastScheduledHour = hour;
-  } else {
-    // Send random message
-    const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
-    payload = { title: 'Notifikasi Sayang 💌', body: msg };
-    console.log(`[SEND] RANDOM to ${subscriptions.length} subscribers`);
-  }
+  // Send random message
+  const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
+  const payload = { title: 'Notifikasi Sayang 💌', body: msg };
+  console.log(`[SEND] RANDOM to ${subscriptions.length} subscribers`);
   
   subscriptions.forEach((sub, idx) => {
     console.log(`[SEND] Sending to subscriber ${idx + 1}/${subscriptions.length}`);
@@ -266,17 +254,54 @@ app.post('/sync-time', (req, res) => {
 // Scheduler
 console.log('[INIT] Setting up scheduler...');
 console.log('[INIT] Current time:', new Date().toLocaleString());
-console.log('[INIT] Sending notification every 30 minutes');
+console.log('[INIT] Scheduled hours:', Object.keys(scheduledMessages).join(', '));
+
+// Schedule exact time for each scheduled message
+Object.keys(scheduledMessages).forEach(hour => {
+  const scheduleHour = parseInt(hour);
+  
+  function scheduleForHour() {
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(scheduleHour, 0, 0, 0);
+    
+    // If target time already passed today, schedule for tomorrow
+    if (target <= now) {
+      target.setDate(target.getDate() + 1);
+    }
+    
+    const msUntil = target.getTime() - now.getTime();
+    console.log(`[SCHEDULER] Scheduled message for ${scheduleHour}:00 in ${Math.round(msUntil/1000/60)} minutes`);
+    
+    setTimeout(() => {
+      console.log(`[SCHEDULER] Triggering scheduled message for ${scheduleHour}:00`);
+      if (subscriptions.length > 0) {
+        const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[scheduleHour] };
+        subscriptions.forEach((sub, idx) => {
+          console.log(`[SEND] SCHEDULED ${scheduleHour}:00 to subscriber ${idx + 1}/${subscriptions.length}`);
+          sendNotification(sub, payload);
+        });
+      }
+      // Schedule again for next day
+      scheduleForHour();
+    }, msUntil);
+  }
+  
+  scheduleForHour();
+});
+
+// Random messages every 10 minutes
+console.log('[INIT] Random messages every 10 minutes');
 
 setTimeout(() => {
-  console.log('[SCHEDULER] Initial check...');
+  console.log('[SCHEDULER] Initial random check...');
   sendMessages();
 }, 3000);
 
 setInterval(() => {
-  console.log('[SCHEDULER] Periodic check...');
+  console.log('[SCHEDULER] Periodic random check...');
   sendMessages();
-}, 30 * 60 * 1000);
+}, 10 * 60 * 1000);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Server listening on ${port}`));
