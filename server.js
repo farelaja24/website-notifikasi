@@ -195,7 +195,7 @@ app.get('/health', (req, res) => {
 
 app.get('/debug/test-send', (req, res) => {
   console.log('[DEBUG] Manual test-send triggered');
-  sendAllRandom();
+  sendMessages();
   res.json({ sent: true, timestamp: new Date().toISOString() });
 });
 
@@ -379,205 +379,70 @@ async function sendNotification(sub, payload, opts = {}, retryCount = 0) {
 
 
 // Track last messages sent to avoid duplicates
-let lastMessageMinute = -1;
-// Use timestamp to track last scheduled send (for 60-second guard)
-let lastScheduledSentAt = 0; // epoch ms of last scheduled message sent
-// Track last random send time for 20-second interval (TESTING)
-let lastRandomSentAt = 0; // epoch ms of last random message sent
-// Suppress random messages when scheduled is about to send or just sent
-let suppressRandomUntil = 0; // epoch ms - don't send random until this time
+let lastScheduledHour = -1;
+let lastRandomMinute = -1;
 
-function checkIfNearScheduled() {
-  const now = new Date();
-  const hour = now.getHours();
-  const minutes = now.getMinutes();
-  
-  // Check all scheduled hours
-  for (const scheduledHour of Object.keys(scheduledMessages).map(h => parseInt(h))) {
-    // Calculate minutes until scheduled hour
-    let minutesUntilScheduled = 0;
-    
-    if (scheduledHour > hour) {
-      // Scheduled is later today
-      minutesUntilScheduled = (scheduledHour - hour) * 60 - minutes;
-    } else if (scheduledHour < hour) {
-      // Scheduled is tomorrow
-      minutesUntilScheduled = (24 - hour + scheduledHour) * 60 - minutes;
-    } else {
-      // Same hour as scheduled
-      minutesUntilScheduled = -minutes; // already passed :00 of this hour
-    }
-    
-    // If within 1-29 minutes before scheduled
-    if (minutesUntilScheduled >= 1 && minutesUntilScheduled <= 29) {
-      return {
-        isNear: true,
-        scheduledHour: scheduledHour,
-        minutesUntil: minutesUntilScheduled
-      };
-    }
-  }
-  
-  return { isNear: false };
-}
-
-function sendAllRandom() {
+function sendMessages() {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-    console.log('[SEND] ⚠ VAPID keys not configured — skipping');
+    console.log('[SEND] ⚠ VAPID keys not configured');
     return;
   }
   if (subscriptions.length === 0) {
-    console.log('[SEND] ⚠ No subscriptions registered');
+    console.log('[SEND] ⚠ No subscriptions');
     return;
   }
 
   const now = new Date();
-  const hour = now.getHours();
-  // Use minutes and seconds declared above
-  const minutes = now.getMinutes();
-  const seconds = now.getSeconds();
+  const utcHour = now.getUTCHours();
+  const utcMin = now.getUTCMinutes();
+  const localHour = convertToLocalHour(utcHour);
 
-  // Only process at :00 and :30 for random/scheduled decisions
-  if (minutes !== 0 && minutes !== 30) {
-    console.log(`[SEND] ℹ️  Not a send time (${minutes}), need :00 or :30`);
+  console.log(`[SEND] UTC ${utcHour}:${String(utcMin).padStart(2,'0')} = Local ${localHour}:${String(utcMin).padStart(2,'0')}`);
+
+  // Send scheduled message at :00 if exists
+  if (utcMin === 0 && scheduledMessages[utcHour] && lastScheduledHour !== utcHour) {
+    lastScheduledHour = utcHour;
+    const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[utcHour] };
+    console.log(`[SEND] SCHEDULED for UTC ${utcHour}:00 (Local ${localHour}:00)`);
+    subscriptions.forEach(sub => sendNotification(sub, payload));
     return;
   }
 
-  // Prevent duplicate sends within the same server-minute
-  if (lastMessageMinute === (hour * 60 + minutes)) {
-    console.log(`[SEND] ℹ️  Already sent message this minute, skipping duplicate`);
-    return;
+  // Send random message at :00 and :30 (skip if just sent scheduled)
+  if ((utcMin === 0 || utcMin === 30) && lastRandomMinute !== utcMin) {
+    // Skip random at :00 if scheduled exists
+    if (utcMin === 0 && scheduledMessages[utcHour]) return;
+    
+    lastRandomMinute = utcMin;
+    const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
+    const payload = { title: 'Notifikasi Sayang 💌', body: msg };
+    console.log(`[SEND] RANDOM at UTC ${utcHour}:${String(utcMin).padStart(2,'0')} (Local ${localHour}:${String(utcMin).padStart(2,'0')})`);
+    subscriptions.forEach(sub => sendNotification(sub, payload, { TTL: 30 }));
   }
 
-  console.log(`\n[SEND] ========================================`);
-  console.log(`[SEND] Server Time: ${now.toLocaleString()} (${hour}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')})`);
-  console.log(`[SEND] Processing ${subscriptions.length} subscriptions individually based on subscriber timezone`);
-  console.log(`[SEND] ========================================`);
-
-  let totalSuccess = 0;
-  let totalFail = 0;
-
-  const serverNowMs = Date.now();
-
-  subscriptions.forEach((sub, idx) => {
-    const subOffset = sub.timezoneOffset || DEFAULT_OFFSET;
-    const utcNow = new Date(serverNowMs);
-    const utcHour = utcNow.getUTCHours();
-    const utcMin = utcNow.getUTCMinutes();
-    const localHour = convertToLocalHour(utcHour, subOffset);
-    const localMin = utcMin;
-
-    // Check if current UTC time matches scheduled message time
-    let willSendScheduled = false;
-    if (utcMin === 0 && scheduledMessages[utcHour]) {
-      const lastSentForSub = sub._lastScheduledSentAt || 0;
-      if (serverNowMs - lastSentForSub > 60 * 60 * 1000) {
-        willSendScheduled = true;
-      }
-    }
-
-    // If scheduled, send scheduled message for this subscriber
-    if (willSendScheduled) {
-      const payload = { title: 'Notifikasi Sayang 💌', body: scheduledMessages[utcHour] };
-      const opts = { TTL: 60 * 60, headers: { Urgency: 'high' } };
-      console.log(`[SEND:${idx + 1}] Sending SCHEDULED to sub (UTC ${utcHour}:00 = Local ${localHour}:00) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
-      sendNotification(sub, payload, opts).then(ok => {
-        if (ok) {
-          totalSuccess++;
-          sub._lastScheduledSentAt = serverNowMs;
-        } else totalFail++;
-      });
-      return;
-    }
-
-    // Send random at :00 or :30 UTC time
-    if (utcMin === 0 || utcMin === 30) {
-      // Skip random if within 1-29 minutes before any scheduled (check UTC hours)
-      let isNear = false;
-      for (const scheduledUtcHour of Object.keys(scheduledMessages).map(h => parseInt(h, 10))) {
-        let minutesUntilScheduled = 0;
-        if (scheduledUtcHour > utcHour) minutesUntilScheduled = (scheduledUtcHour - utcHour) * 60 - utcMin;
-        else if (scheduledUtcHour < utcHour) minutesUntilScheduled = (24 - utcHour + scheduledUtcHour) * 60 - utcMin;
-        else minutesUntilScheduled = -utcMin;
-        if (minutesUntilScheduled >=1 && minutesUntilScheduled <= 29) { isNear = true; break; }
-      }
-      if (isNear) {
-        console.log(`[SEND:${idx + 1}] Skipping random (near scheduled)`);
-        return;
-      }
-
-      // Send random message
-      const msg = messages30min[Math.floor(Math.random() * messages30min.length)];
-      const payload = { title: 'Notifikasi Sayang 💌', body: msg };
-      const opts = { TTL: 30, headers: { Urgency: 'normal' } };
-      console.log(`[SEND:${idx + 1}] Sending RANDOM to sub (UTC ${String(utcHour).padStart(2,'0')}:${String(utcMin).padStart(2,'0')} = Local ${String(localHour).padStart(2,'0')}:${String(localMin).padStart(2,'0')}) endpoint ${sub.endpoint ? sub.endpoint.substring(0,60) + '...' : '[no-endpoint]'} `);
-      sendNotification(sub, payload, opts).then(ok => {
-        if (ok) totalSuccess++; else totalFail++;
-      });
-      return;
-    }
-
-    // Not a send time for this subscriber
-    // console.log(`[SEND:${idx + 1}] Not send time for subscriber (local ${localHour}:${localMin})`);
-  });
-
-  // update lastMessageMinute to avoid duplicate runs this server-minute
-  lastMessageMinute = (hour * 60 + minutes);
-
-  // Note: individual sendNotification promises update totals asynchronously and log their own results
-}
-
-// Scheduling logic for TESTING:
-//  - Random messages: every 20 seconds
-//  - Scheduled messages: every 60 seconds per hour (for testing; production: change 60*1000 to 60*60*1000)
-
-function msUntilNextMinute() {
-  const now = new Date();
-  return 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+  // Reset trackers when minute changes
+  if (utcMin !== 0 && utcMin !== 30) {
+    lastRandomMinute = -1;
+  }
+  if (utcMin !== 0) {
+    lastScheduledHour = -1;
+  }
 }
 
 function scheduleTimers() {
-  // Align to next minute then set recurring intervals
-  setTimeout(() => {
-    // Every minute, check for messages at :00 and :30
-    setInterval(() => {
-      const now = new Date();
-      const minutes = now.getMinutes();
-      
-      // Send message at every :00 and :30
-      if (minutes === 0 || minutes === 30) {
-        console.log(`[SCHEDULER] Time is ${minutes} - checking for message to send...`);
-        sendAllRandom();
-      }
-    }, 60 * 1000);
-
-  }, msUntilNextMinute());
+  console.log('[SCHEDULER] Starting timer - checking every minute');
+  setInterval(() => {
+    sendMessages();
+  }, 60 * 1000);
+  // Send immediately on start
+  setTimeout(() => sendMessages(), 2000);
 }
 
-// Default: test disabled (0). Set TEST_INTERVAL_SECONDS to enable test loop.
-// For production we use scheduleTimers() which checks minutes each minute.
 const testIntervalSec = parseInt(process.env.TEST_INTERVAL_SECONDS || '0', 10);
-if (testIntervalSec && testIntervalSec > 0) {
-  console.log(`TEST MODE: checking messages every ${testIntervalSec} seconds`);
-  console.log('TEST MODE ENABLED: custom interval =', testIntervalSec, 'seconds');
-  console.log('📌 Note: In production test mode is disabled and scheduler runs every minute');
-
-  let lastCheckHour = -1;
-
-  setInterval(() => {
-    const now = new Date();
-    const hour = now.getHours();
-
-    // Reset scheduled tracker when hour changes
-    if (hour !== lastCheckHour) {
-      lastScheduledSentAt = 0;
-      lastCheckHour = hour;
-    }
-
-    // Call sendAllRandom every interval (it handles 20-sec and 60-sec logic internally)
-    console.log(`[TEST MODE] Check at ${now.toISOString()}`);
-    sendAllRandom();
-  }, testIntervalSec * 1000);
+if (testIntervalSec > 0) {
+  console.log(`[TEST MODE] Checking every ${testIntervalSec} seconds`);
+  setInterval(() => sendMessages(), testIntervalSec * 1000);
+  setTimeout(() => sendMessages(), 2000);
 } else {
   scheduleTimers();
 }
@@ -646,8 +511,7 @@ function getTimeUntilNextMessage() {
 }
 
 app.post('/sendNow', (req, res) => {
-  // This is for manual testing/immediate send
-  sendAllRandom();
+  sendMessages();
   res.json({ sent: true });
 });
 
@@ -684,9 +548,8 @@ app.get('/debug/state', (req, res) => {
   const now = new Date();
   res.json({
     subscriptions: subscriptions.length,
-    lastMessageMinute,
-    lastScheduledSentAt,
-    lastScheduledSentAtIso: lastScheduledSentAt ? new Date(lastScheduledSentAt).toISOString() : null,
+    lastScheduledHour,
+    lastRandomMinute,
     currentHour: now.getUTCHours(),
     currentMinute: now.getUTCMinutes(),
     currentLocalHour: convertToLocalHour(now.getUTCHours()),
@@ -722,24 +585,15 @@ app.get('/scheduled', (req, res) => {
 // Endpoint for client to sync its device time with server
 // Client sends its device time (Date.now()) and gets back server's timing info
 app.post('/sync-time', (req, res) => {
-  const clientDeviceTime = req.body.deviceTime || Date.now();
   const serverTime = Date.now();
   const now = new Date();
-  
-  // Calculate time drift (how many ms client is ahead/behind server)
-  const timeDrift = clientDeviceTime - serverTime;
-  
   res.json({
     success: true,
-    clientDeviceTime,
     serverTime,
     serverLocalTime: now.toISOString(),
-    timeDrift,
-    suppressRandomUntil,
-    lastScheduledSentAt,
-    lastRandomSentAt,
-    nextScheduledIn: Math.max(0, 60 * 1000 - (serverTime - lastScheduledSentAt)),
-    nextRandomIn: Math.max(0, suppressRandomUntil - serverTime > 0 ? suppressRandomUntil - serverTime : (20 * 1000 - (serverTime - lastRandomSentAt)))
+    utcHour: now.getUTCHours(),
+    utcMinute: now.getUTCMinutes(),
+    localHour: convertToLocalHour(now.getUTCHours())
   });
 });
 
