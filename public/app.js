@@ -63,17 +63,13 @@ btn.addEventListener('click', async () => {
     console.log('   Endpoint:', sub.endpoint.substring(0, 60) + '...');
 
     console.log('10. Sending subscription to server...');
-    // Include device timezone metadata so server can schedule per-user
-    const tzOffsetMinutes = new Date().getTimezoneOffset();
-    const tzName = (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : null;
-    const subWithMeta = Object.assign({}, sub, { tzOffsetMinutes, tz: tzName });
     const subResp = await fetch('/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(subWithMeta)
+      body: JSON.stringify(sub.toJSON())
     });
     const subData = await subResp.json();
-    console.log('11. ✓ Server confirmed subscription');
+    console.log('11. ✓ Server confirmed subscription:', subData);
 
     status.textContent = 'Terdaftar untuk notifikasi ❤️';
     console.log('========== SUBSCRIPTION FLOW COMPLETE ==========\n');
@@ -94,9 +90,9 @@ btn.addEventListener('click', async () => {
       await fetch('/sendWelcome', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sub)
+        body: JSON.stringify(sub.toJSON())
       });
-      console.log('✓ Requested /sendWelcome - welcome notification should arrive');
+      console.log('✓ Requested /sendWelcome');
     } catch (e) {
       console.warn('⚠️ Failed to request /sendWelcome:', e);
     }
@@ -292,7 +288,7 @@ async function initServiceWorkerAndSubscription() {
         const resp = await fetch('/subscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sub)
+          body: JSON.stringify(sub.toJSON())
         });
         const data = await resp.json();
         console.log('Init: Server confirmed subscription:', data);
